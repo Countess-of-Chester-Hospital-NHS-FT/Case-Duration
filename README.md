@@ -1,49 +1,28 @@
-# Project Template (Py)
-
-This git repository is a template that should be used as the default structure for new projects. It was adapted from [NHSE template](https://github.com/nhsengland/nhse-repository-template/tree/main) and [BSOL template](https://github.com/Birmingham-and-Solihull-ICS/BSOLproject) . It won't fit all circumstances perfectly, and you can adapt it to your needs and make a pull request if you want to suggest changes to the template.
-
-The aim of this template is two-fold: firstly to give a common structure for analytical projects to aid
-reproducibility, secondly to allow for additional security settings as default to prevent accidental upload of files that should not be committed to Git and GitHub.
-
-## To use this template, please use the following practises:
-
-* Put any data files in the `data` folder.  This folder is explicitly named in the .gitignore file.  A further layer of security is that all xls, xlsx, csv and pdf files are also explicit ignored in the whole folder as well.  ___If you need to commit one of these files, you must use the `-f` (force) command in `commit`, or specify the file as an exception in the .gitignore but you must be sure there is no identifiable data.__
-* Adapt the .gitignore to suit your needs.
-* Save any documentation in the `docs` file.  This does not mean you should avoid commenting your code, but if you have an operating procedure or supporting documents, add them to this folder. If any documentation contains sensitive information that shouldn't be pushed, make sure you add the document to the .gitignore file.
-* Please save all output: data, formatted tables, graphs etc. in the output folder.  This is also implicitly ignored by git, but you can use the `-f` (force) command in `commit` to add any you wish to publish to github.
-* Change the codeowners file (in .github folder) so you are the codeowner.
-
-### Please also consider the following:
-* Comment your code to make sure others can follow.
-* Consider your naming conventions: we recommend `snake case` where spaces are replaced by underscores and no capitals are use. E.g. `outpatient_referral_data`
-
-__Please update/replace this README file with one relevant to your project__
-
-# Project Name
+# Theatre case duration prediction
 
 ### Status
-This project is currently work in progress / completed / being maintained / not being maintained
+This project is currently work in progress.
 
 ### About the project
-Short description and purpose / objectives of the project
+Key to maximising this session utilisation is the ability to accurately predict the duration of surgical cases at the time of booking (around one month in advance). As well as allowing sessions to be more optimally filled, this may enable booking staff to rebook cancelled sessions at short notice.
 
-Link to any refereneces / publications
+There are several published studies which indicate accuarte predictions of case durations are obtainable by machine learning approaches:
+* [Spence et al (2023)](https://pubmed.ncbi.nlm.nih.gov/37931236/)
+* [Bartek et al (2019)](https://pubmed.ncbi.nlm.nih.gov/31310851/)
+* [Kendale et al (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC11041482/)
+* [Korzhenevich et al (2024)](https://pubmed.ncbi.nlm.nih.gov/38696030/)
 
 Note: Only public or dummy data are shared in this repository
 
 ### Project Structure
 
-* The main code is found in the root of the repo
-* Any notes which may be helpful
+* Project currently under development.
 
 ### Built with
-List of R / python versions and packages or if these are captured in a requirements file
-
-### Outputs
-If not already described.
+Relevant packages to be captured in requirements file.
 
 ### Contributing
-Contributions and identification of issues are welcomed.
+Contributions and identification of issues are welcomed. Please open an issue if you identify one.
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/Feature`)
