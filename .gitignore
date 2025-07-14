@@ -1,0 +1,32 @@
+# Exclude default Py data formats and Py files that may accidentally save your data or don't require version control
+__pycache__/
+*.pyc
+
+# Exclude the following directories 
+/data/
+/output/
+
+# Exclude data file types
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+*.csv
+*.pdf
+*.svg
+
+# Exclude output file types
+*.html
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+### Windows specific stuff ###
+# Windows thumbnail cache files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db

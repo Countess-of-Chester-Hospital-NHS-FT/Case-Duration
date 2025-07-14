@@ -1,0 +1,7 @@
+# See the github docs on codeowners 
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners#about-code-owners
+
+
+# The person(s) listed below will be requested fro review when PRs are made
+*       @helenajr 
+
