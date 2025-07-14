@@ -30,7 +30,5 @@ Contributions and identification of issues are welcomed. Please open an issue if
 4. Push to the Branch (`git push origin feature/Feature`)
 5. Open a Pull Request
 
-### License
-Unless stated otherwise, the codebase is released under the MIT Licence. This covers both the codebase and any sample code in the documentation.
-
-See LICENSE for more information.
+### Acknowledgements
+* This project was primarily developed by [Patrick Devaney](https://github.com/paddy-devan) as part of a Cambridge Spark Level 7 Apprenticeship in Data Science and AI.
