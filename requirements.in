@@ -4,3 +4,4 @@ xgboost
 matplotlib
 seaborn
 plotly
+category_encoders
