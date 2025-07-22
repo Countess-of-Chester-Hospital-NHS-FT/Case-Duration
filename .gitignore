@@ -24,6 +24,7 @@ __pycache__/
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
+!test.ipynb
 
 ### Windows specific stuff ###
 # Windows thumbnail cache files
