@@ -2,3 +2,4 @@
 
 pip-tools
 ipykernel
+nbstripout
