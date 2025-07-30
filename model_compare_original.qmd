@@ -1,0 +1,114 @@
+---
+title: "Theatre Case Duration Prediction (Original)"
+subtitle: "Subtitle"
+author: "COCH Data & Analytics Team"
+date: "July 24, 2025"
+format:
+  html:
+    code-fold: true
+    toc: true
+    toc-float: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+
+# import libraries
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, KFold
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression, Ridge
+from xgboost import XGBRegressor
+from category_encoders import TargetEncoder
+from sklearn.metrics import mean_absolute_percentage_error, make_scorer
+from sklearn.base import BaseEstimator, RegressorMixin, clone
+import matplotlib.pyplot as plt
+import seaborn as sns
+```
+
+```{python}
+#| echo: false
+
+# data import
+data = pd.read_csv('Dataset.csv', encoding='ISO-8859-1')
+
+```
+
+## Exploratory Data Analysis
+
+### Feature summary table
+
+@tbl-feature-summary shows a summary of all the features. It is apparent that some features like BMI have implausible min and max values.
+
+```{python}
+#| label: tbl-feature-summary
+#| tbl-cap: "Summary of features"
+feature_summary = data.describe()
+feature_summary = feature_summary.round(2)
+
+feature_summary
+```
+
+### Missing data
+
+@fig-eda-missing graphically shows which features contain more missing data and where missingness correlates across features.
+
+```{python}
+#| label: fig-eda-missing
+#| fig-cap: "Heatmap to show missing data."
+sns.heatmap(data.isnull(), cbar=False, cmap='viridis')
+plt.show()
+```
+
+### Assigning features to categories
+
+```{python}
+#| code-fold: false
+# split features into categories for plotting and pipeline
+categorical_low_cardinality = ['SessionType', 'WoundClass', 'PatientClassification', 'ASAScore', 'PatientSex']
+categorical_high_cardinality = ['Specialty', 'ProcedureCategory', 'PrimaryProcedure', 'ConsultantSurgeon', 'OperatingSurgeon', 'FirstAssistant', 'Anaesthetist']
+numerical_features = ['SecondaryProcedures', 'AgeAtCase', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored', 'AvgDurationProc', 'AvgDurationProcAndSurgeon']
+binary_features = ['LaproscopicFlag', 'COMORB_ThyroidProblems2', 'COMORB_Endocarditis', 'COMORB_HeartMurmur', 'COMORB_RheumaticFever', 'COMORB_KidneyDisease', 'COMORB_LiverDisease', 'COMORB_Diabetes', 'COMORB_Pacemaker', 'COMORB_Stroke', 'COMORB_AnaestheticProblems']
+```
+
+### Binary features
+
+```{python}
+#| label: fig-binary
+#| fig-cap: "Average values of binary figures"
+# Binary features bar chart
+binary_avg = data[binary_features].mean().sort_values()
+#plt.figure(figsize=(10, 6))
+sns.barplot(x=binary_avg.values, y=binary_avg.index, palette='viridis')
+plt.xlabel('Proportion of Rows = 1')
+plt.ylabel('Feature Name')
+#plt.title('Average Values of Binary Features')
+plt.show()
+```
+
+### Numerical featues
+
+```{python}
+#| label: fig-numerical
+#| fig-cap: "Average values of numerical features"
+
+for column in numerical_features:
+    plt.figure(figsize=(8, 4))
+    sns.histplot(data[column], kde=True, bins=30)
+    plt.title(f'Distribution of {column}')
+    plt.xlabel(column)
+    plt.show()
+```
+
+## Preparing Pipeline

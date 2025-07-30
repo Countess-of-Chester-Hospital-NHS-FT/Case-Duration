@@ -1,0 +1,481 @@
+---
+title: "Theatre Case Duration Prediction (New)"
+subtitle: "Subtitle"
+author: "COCH Data & Analytics Team"
+date: "July 24, 2025"
+format:
+  html:
+    code-fold: true
+    toc: true
+    toc-float: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+
+# import libraries
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, KFold
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression, Ridge
+from xgboost import XGBRegressor
+from category_encoders import TargetEncoder
+from sklearn.metrics import mean_absolute_percentage_error, make_scorer
+from sklearn.base import BaseEstimator, RegressorMixin, clone
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pyodbc
+#import qgrid
+```
+
+```{python}
+#| echo: false
+# data import
+dsn = "coch_p2" 
+
+read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
+
+sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_training"
+data = pd.read_sql_query(sql_query, read_connection)
+
+read_connection.close()
+
+data.to_csv('dataset2.csv', index=False)
+```
+
+## Exploratory Data Analysis
+
+### Target feature
+
+```{python}
+#| label: fig-target
+#| fig-cap: "Histogram of case durations"
+
+
+plt.figure(figsize=(8, 4))
+sns.histplot(data['CaseDuration'], kde=True, bins=40)
+plt.title(f'Distribution of {'CaseDuration'}')
+plt.xlabel('CaseDuration')
+plt.show()
+```
+
+
+### Feature summary table
+
+@tbl-feature-summary shows a summary of all the numerical features. The min and max values appear to lie within plausible ranges (which were determined in the SQL).
+
+```{python}
+#| label: tbl-feature-summary
+#| tbl-cap: "Summary of features"
+# specify a list of features to drop
+drop_features = ['ip_encntr_id', 'op_encntr_id', 'ReferralID', 'SnapshotDate', 'TFSpecialty', 'HasGatekeeper', 'HasPreop']
+data = data.drop(drop_features, axis = 1)
+feature_summary = data.describe()
+feature_summary = feature_summary.round(2)
+
+feature_summary
+```
+
+### Missing data
+
+@fig-eda-missing graphically shows which features contain more missing data and where missingness correlates across features. As expected all the fields which come from the gatekeeper or pre op assessments are highly correlated for missingness, as if no assessment has happened none of the fields are populated.
+
+```{python}
+#| label: fig-eda-missing
+#| fig-cap: "Heatmap to show missing data."
+sns.heatmap(data.isnull(), cbar=False, cmap='viridis')
+plt.show()
+```
+
+### Assigning features to categories
+
+```{python}
+#| code-fold: false
+# split features into categories for plotting and pipeline
+categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex']
+categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory', 'Consultant']
+numerical_features = ['PatientAge', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored']
+binary_features = []
+```
+
+### Binary features
+
+No binary features in this dataset.
+```{python}
+#| label: fig-binary
+#| fig-cap: "Average values of binary figures"
+# Binary features bar chart
+#binary_avg = data[binary_features].mean().sort_values()
+#plt.figure(figsize=(10, 6))
+#sns.barplot(x=binary_avg.values, y=binary_avg.index, palette='viridis')
+#plt.xlabel('Proportion of Rows = 1')
+#plt.ylabel('Feature Name')
+#plt.title('Average Values of Binary Features')
+#plt.show()
+```
+
+### Numerical featues
+
+@fig-numerical shows the distribution of the numerical features, which all look plausible and normal (with the exception of age). This means they are suitable for imputation using the mean in the pipeline.
+
+```{python}
+#| label: fig-numerical
+#| fig-cap: "Average values of numerical features"
+
+for column in numerical_features:
+    plt.figure(figsize=(8, 4))
+    sns.histplot(data[column], kde=True, bins=30)
+    plt.title(f'Distribution of {column}')
+    plt.xlabel(column)
+    plt.show()
+```
+
+### Categorical features
+
+@fig-categorical shows there are some procedures that are not well represented in the training data. This could cause potentially cause issues later on. The first 3 characters of the OPCS code have now been included to try and encompass a less granular categorisation for procedure and this does look like it has reduced the number of unique procedures (see @tbl-waitlistop and @tbl-opcs).
+
+```{python}
+#| label: fig-categorical
+#| fig-cap: "Average values of numerical features"
+
+all_cat_features = categorical_low_cardinality + categorical_high_cardinality
+all_cat_features.remove('WaitListOpName')
+all_cat_features.remove('OPCSCategory')
+
+for column in all_cat_features:
+    # Calculate category counts, sorted by frequency
+    order = data[column].value_counts().index
+    plt.figure(figsize=(8, 4))
+    sns.countplot(data[column], order = order)
+    plt.title(f'Barplot of {column}')
+    plt.xlabel(column)
+    plt.show()
+
+order = data['WaitListOpName'].value_counts().index
+plt.figure(figsize=(8, 40))
+sns.countplot(data['WaitListOpName'], order = order)
+
+order = data['OPCSCategory'].value_counts().index
+plt.figure(figsize=(8, 30))
+sns.countplot(data['OPCSCategory'], order = order)
+```
+
+```{python}
+#| label: tbl-waitlistop
+#| tbl-cap: "Count of distinct procedure names"
+counts_df = data['WaitListOpName'].value_counts().reset_index()
+counts_df.columns = ['WaitListOpName', 'Count']
+counts_df
+```
+
+```{python}
+#| label: tbl-opcs
+#| tbl-cap: "Count of distinct procedure names"
+counts_df = data['OPCSCategory'].value_counts().reset_index()
+counts_df.columns = ['OPCSCategory', 'Count']
+counts_df
+```
+
+### Cross Correlation between numerical features
+
+```{python}
+# Cross correlation chart for numeric, binary, and target features
+#| label: fig-correlation
+#| fig-cap: "Cross Correlation Heatmap"
+features_for_corr = numerical_features + binary_features + ['CaseDuration']
+plt.figure(figsize=(12, 10))
+corr = data[features_for_corr].corr()
+sns.heatmap(corr, annot=True, cmap='coolwarm', linewidths=0.5)
+plt.title('Cross Correlation Heatmap')
+plt.show()
+```
+
+
+## Processing Pipeline
+
+### Create processing pipeline
+
+These steps specify the handling of missing variables, encoding of categorical variables and scaling. Note that with categorical variables missing data is encoded as None, whereas numerical variables it is encoded as np.nan. The imputer will only pick up np.nan by default and needs to be told to look for None if that is what you want.
+
+```{python}
+#| code-fold: false
+numeric_transformer = Pipeline(
+    steps=[
+        ('imputer', SimpleImputer(strategy='mean')),
+        ('scaler', StandardScaler())
+    ]
+)
+
+categorical_low_transformer = Pipeline(
+    steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)), #missing data in this column is not np.nan, but python None
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ]
+)
+
+categorical_high_transformer = Pipeline(
+    steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
+        ('target_enc', TargetEncoder()),
+        ('scaler', StandardScaler())
+    ]
+)
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numerical_features),
+        ('cat_low', categorical_low_transformer, categorical_low_cardinality),
+        ('cat_high', categorical_high_transformer, categorical_high_cardinality),
+        ('binary', 'passthrough', binary_features)
+    ]
+)
+```
+
+### Test Processing Pipeline
+
+This is what the data looks like after its been passed through the pipeline. The tables below demonstrate all the columns are being passed through and processed in the manner specified. All the numerical and target encoded variables are scaled.
+
+```{python}
+#| label: tbl-inspect
+#| tbl-cap: "Post pipeline table of training data for inspection"
+# define target and features
+y = data['CaseDuration']
+X = data[categorical_low_cardinality + categorical_high_cardinality + numerical_features + binary_features]
+
+# split data into train and test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+# Fit and pre-process the training data
+X_train_preprocessed = preprocessor.fit_transform(X_train, y_train)
+
+# pre process the test data
+X_test_preprocessed = preprocessor.transform(X_test)
+
+# convert them back to dataframes with meaningful column names so I can inspect
+feature_names = preprocessor.get_feature_names_out()
+X_train_preprocessed_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
+
+rename_mapping = {
+    f'cat_high__{i}': col_name
+    for i, col_name in enumerate(categorical_high_cardinality)
+}
+
+X_train_preprocessed_df = X_train_preprocessed_df.rename(columns=rename_mapping)
+
+X_train_preprocessed_df
+```
+
+```{python}
+#| label: tbl-inspect-test
+#| tbl-cap: "Post pipeline table of test data for inspection"
+X_test_preprocessed_df = pd.DataFrame(X_test_preprocessed, columns=feature_names)
+
+X_test_preprocessed_df = X_test_preprocessed_df.rename(columns=rename_mapping)
+
+X_test_preprocessed_df
+```
+
+## Model Comparison
+
+```{python}
+# Define models
+models = {
+    'Ridge Regression': Ridge(),
+    'Random Forest': RandomForestRegressor(),
+    'XGBoost': XGBRegressor(),
+    'Gradient Boosting': GradientBoostingRegressor()
+}
+
+# Define hyperparameter grids for random search
+param_distributions = {
+    'Ridge Regression': {
+        'model__alpha': [0.01, 0.1, 1.0, 10.0, 100.0]
+    },
+    'Random Forest': {
+        'model__n_estimators': [50, 100, 200],
+        'model__max_depth': [None, 5, 10, 20],
+        'model__min_samples_split': [2, 5, 10],
+        'model__min_samples_leaf': [1, 2, 4],
+        'model__max_features': ['auto', 'sqrt']
+    },
+    'XGBoost': {
+        'model__n_estimators': [50, 100, 200],
+        'model__max_depth': [3, 5, 7],
+        'model__learning_rate': [0.01, 0.05, 0.1],
+        'model__subsample': [0.6, 0.8, 1.0],
+        'model__colsample_bytree': [0.6, 0.8, 1.0]
+    },
+    'Gradient Boosting': {
+        'model__n_estimators': [50, 100, 200],
+        'model__max_depth': [3, 5, 7],
+        'model__learning_rate': [0.01, 0.05, 0.1],
+        'model__subsample': [0.6, 0.8, 1.0],
+        'model__max_features': ['auto', 'sqrt']
+    }
+}
+
+# Scoring metrics
+def percentage_within_10(y_true, y_pred):
+    epsilon = 1e-10
+    return np.mean(np.abs((y_true - y_pred) / (y_true + epsilon)) <= 0.1)
+
+def percent_overage(y_true, y_pred):
+    epsilon = 1e-10
+    return np.mean((y_pred - y_true) / (y_true + epsilon) > 0.1)
+
+def percent_underage(y_true, y_pred):
+    epsilon = 1e-10
+    return np.mean((y_pred - y_true) / (y_true + epsilon) < -0.1)
+
+mape_scorer = make_scorer(mean_absolute_percentage_error, greater_is_better=False)
+
+# Define the custom scoring dictionary
+scoring = {
+    'MAPE': mape_scorer,
+    'Percentage Within 10%': make_scorer(percentage_within_10, greater_is_better=True),
+    'Percent Overage': make_scorer(percent_overage, greater_is_better=False),
+    'Percent Underage': make_scorer(percent_underage, greater_is_better=False)
+}
+
+# Load your data (make sure 'data' is defined)
+# data = pd.read_csv('your_data.csv')  # Uncomment and modify as needed
+
+# Split data into features and target
+X = data.drop('CaseDuration', axis=1)
+y = data['CaseDuration']
+
+# Define outer cross-validation strategy
+outer_cv = KFold(n_splits=5, shuffle=True, random_state=42)
+
+# Initialize dictionary to store results
+outer_results = {}
+
+# Initialize dictionary to store percentage errors for visualization
+percentage_errors = {}
+
+for model_name, model in models.items():
+    print(f"Evaluating {model_name} with nested cross-validation...")
+    # Lists to store metrics for each fold
+    mape_scores = []
+    pct_within_10_scores = []
+    pct_overage_scores = []
+    pct_underage_scores = []
+    fold_percentage_errors = []
+
+    # Outer loop: model evaluation
+    for train_index, test_index in outer_cv.split(X, y):
+        X_train_outer, X_test_outer = X.iloc[train_index], X.iloc[test_index]
+        y_train_outer, y_test_outer = y.iloc[train_index], y.iloc[test_index]
+
+        # Create pipeline
+        pipeline = Pipeline(
+            steps=[
+                ('preprocessor', preprocessor),
+                ('model', model)
+            ]
+        )
+
+        # Hyperparameter tuning (inner cross-validation)
+        if model_name in param_distributions:
+            inner_cv = KFold(n_splits=3, shuffle=True, random_state=42)
+            random_search = RandomizedSearchCV(
+                estimator=pipeline,
+                param_distributions=param_distributions[model_name],
+                n_iter=10,
+                cv=inner_cv,
+                scoring=mape_scorer,
+                random_state=42,
+                n_jobs=-1
+            )
+            random_search.fit(X_train_outer, y_train_outer)
+            best_model = random_search.best_estimator_
+            print(f"Best hyperparameters for {model_name}: {random_search.best_params_}")
+        else:
+            # No hyperparameter tuning
+            best_model = pipeline.fit(X_train_outer, y_train_outer)
+
+        # Predict on the outer test set
+        y_pred_outer = best_model.predict(X_test_outer)
+
+        # Calculate percentage errors for visualization
+        epsilon = 1e-10
+        percentage_error = (y_pred_outer - y_test_outer.values) / (y_test_outer.values + epsilon)
+        fold_percentage_errors.extend(percentage_error)
+
+        # Compute evaluation metrics
+        mape = mean_absolute_percentage_error(y_test_outer, y_pred_outer)
+        pct_within_10 = percentage_within_10(y_test_outer, y_pred_outer)
+        pct_overage = percent_overage(y_test_outer, y_pred_outer)
+        pct_underage = percent_underage(y_test_outer, y_pred_outer)
+
+        # Append metrics
+        mape_scores.append(mape)
+        pct_within_10_scores.append(pct_within_10)
+        pct_overage_scores.append(pct_overage)
+        pct_underage_scores.append(pct_underage)
+
+    # Store the metrics
+    outer_results[model_name] = {
+        'MAPE': {'mean': np.mean(mape_scores), 'std': np.std(mape_scores)},
+        'Percentage Within 10%': {'mean': np.mean(pct_within_10_scores), 'std': np.std(pct_within_10_scores)},
+        'Percent Overage': {'mean': np.mean(pct_overage_scores), 'std': np.std(pct_overage_scores)},
+        'Percent Underage': {'mean': np.mean(pct_underage_scores), 'std': np.std(pct_underage_scores)},
+    }
+
+    # Store percentage errors for visualization
+    percentage_errors[model_name] = np.array(fold_percentage_errors)
+
+# Display results
+print("\nCross-Validation Results:")
+for model_name, metrics in outer_results.items():
+    print(f"\nModel: {model_name}")
+    for metric_name, metric_values in metrics.items():
+        print(f"{metric_name}: {metric_values['mean']:.4f} ± {metric_values['std']:.4f}")
+
+# Convert results to DataFrame for plotting
+results_df = pd.DataFrame({
+    model_name: {metric_name: metrics[metric_name]['mean'] for metric_name in metrics}
+    for model_name, metrics in outer_results.items()
+}).T
+
+# Plot comparison of models
+results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False)
+plt.tight_layout()
+plt.show()
+
+# Plot distribution of percentage errors for each model
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+axes = axes.flatten()
+
+for ax, (model_name, errors) in zip(axes, percentage_errors.items()):
+    # Convert to percentage
+    percentage_error_percent = errors * 100
+    # Clip percentage errors to range -100% to +100%
+    percentage_error_percent = np.clip(percentage_error_percent, -100, 100)
+    # Plot histogram
+    ax.hist(
+        percentage_error_percent,
+        bins=50,
+        range=(-100, 100),
+        weights=np.ones_like(percentage_error_percent) / len(percentage_error_percent),
+        edgecolor='black'
+    )
+    ax.set_xlim(-100, 100)
+    ax.set_xlabel('Percentage Error (%)')
+    ax.set_ylabel('Proportion of Predictions')
+    ax.set_title(f'Distribution of Errors: {model_name}')
+
+plt.tight_layout()
+plt.show()
+```
