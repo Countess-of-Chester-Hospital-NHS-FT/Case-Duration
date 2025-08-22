@@ -2,7 +2,7 @@
 title: "Theatre Case Duration Prediction (New)"
 subtitle: "Subtitle"
 author: "COCH Data & Analytics Team"
-date: "July 24, 2025"
+date: today
 format:
   html:
     code-fold: true
@@ -36,22 +36,26 @@ from sklearn.base import BaseEstimator, RegressorMixin, clone
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pyodbc
-#import qgrid
+import joblib
+from datetime import date
 ```
 
 ```{python}
 #| echo: false
 # data import
-dsn = "coch_p2" 
+# dsn = "coch_p2" 
 
-read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
+# read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
 
-sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_training"
-data = pd.read_sql_query(sql_query, read_connection)
+# sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_training"
+# data = pd.read_sql_query(sql_query, read_connection)
 
-read_connection.close()
+# read_connection.close()
 
-data.to_csv('dataset2.csv', index=False)
+# data.to_csv('dataset2.csv', index=False)
+
+# data import
+data = pd.read_csv('dataset2.csv')
 ```
 
 ## Exploratory Data Analysis
@@ -189,6 +193,8 @@ counts_df
 
 ### Cross Correlation between numerical features
 
+@fig-correlation shows in general numerical features are not highly correlated, which is good as it suggests there is little redundancy. The highest correlation is between systolic and diastolic blood pressure, which is expected as they are measuring the same phenomenon.
+
 ```{python}
 # Cross correlation chart for numeric, binary, and target features
 #| label: fig-correlation
@@ -219,14 +225,17 @@ numeric_transformer = Pipeline(
 
 categorical_low_transformer = Pipeline(
     steps=[
-        ('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)), #missing data in this column is not np.nan, but python None
+        #('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
+        ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),  
+        #missing data in this column is not np.nan, but python None
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
     ]
 )
 
 categorical_high_transformer = Pipeline(
     steps=[
-        ('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
+        #('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
+        ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),
         ('target_enc', TargetEncoder()),
         ('scaler', StandardScaler())
     ]
@@ -288,7 +297,16 @@ X_test_preprocessed_df
 
 ## Model Comparison
 
+The next section compares several different models over a range of hyperparameters (nested cross validation), to find the model that has the best and most stable performance when trained/tested on different slices of the dataset. When the best modelling procedure has been decided on the hyperparameter search will be repeated using the whole of the dataset.
+
+*   **Ridge Regression:** A linear regression model that uses a tuning parameter to shrink the co-efficient estimates towards 0. This technique benefits from standardising the scale of the predictors first. Increasing the tuning parameter decreases the coefficients, reducing the flexibility of the fit, decreasing variance but increasing bias. (Avoiding overfitting, but making it less able to represent complex relationships between predictors).
+*   **Random Forest Regressor:** An ensemble method that fits multiple decision trees on different sub-samples of the dataset and uses averaging to improve predictive accuracy and control overfitting.
+*   **XGBoost Regressor:** A powerful and efficient implementation of gradient boosting.
+*   **Gradient Boosting Regressor:** Another ensemble technique that builds models in a sequential manner, with each new model correcting the errors of the previous one.
+
 ```{python}
+#| code-fold: false
+#| label: set parameters
 # Define models
 models = {
     'Ridge Regression': Ridge(),
@@ -300,7 +318,7 @@ models = {
 # Define hyperparameter grids for random search
 param_distributions = {
     'Ridge Regression': {
-        'model__alpha': [0.01, 0.1, 1.0, 10.0, 100.0]
+        'model__alpha': [0, 0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0] #0 is with no regularisation
     },
     'Random Forest': {
         'model__n_estimators': [50, 100, 200],
@@ -323,9 +341,13 @@ param_distributions = {
         'model__subsample': [0.6, 0.8, 1.0],
         'model__max_features': ['auto', 'sqrt']
     }
-}
+}#
 
-# Scoring metrics
+```
+
+```{python}
+#| label: make scorers
+
 def percentage_within_10(y_true, y_pred):
     epsilon = 1e-10
     return np.mean(np.abs((y_true - y_pred) / (y_true + epsilon)) <= 0.1)
@@ -347,13 +369,13 @@ scoring = {
     'Percent Overage': make_scorer(percent_overage, greater_is_better=False),
     'Percent Underage': make_scorer(percent_underage, greater_is_better=False)
 }
-
-# Load your data (make sure 'data' is defined)
-# data = pd.read_csv('your_data.csv')  # Uncomment and modify as needed
+```
+```{python}
+#| label: split data and prep for nested validation
 
 # Split data into features and target
-X = data.drop('CaseDuration', axis=1)
 y = data['CaseDuration']
+X = data[categorical_low_cardinality + categorical_high_cardinality + numerical_features + binary_features]
 
 # Define outer cross-validation strategy
 outer_cv = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -364,6 +386,10 @@ outer_results = {}
 # Initialize dictionary to store percentage errors for visualization
 percentage_errors = {}
 
+```
+
+```{python}
+#| label: nested validation
 for model_name, model in models.items():
     print(f"Evaluating {model_name} with nested cross-validation...")
     # Lists to store metrics for each fold
@@ -396,7 +422,7 @@ for model_name, model in models.items():
                 cv=inner_cv,
                 scoring=mape_scorer,
                 random_state=42,
-                n_jobs=-1
+                n_jobs=1
             )
             random_search.fit(X_train_outer, y_train_outer)
             best_model = random_search.best_estimator_
@@ -448,8 +474,9 @@ results_df = pd.DataFrame({
     model_name: {metric_name: metrics[metric_name]['mean'] for metric_name in metrics}
     for model_name, metrics in outer_results.items()
 }).T
-
-# Plot comparison of models
+```
+```{python}
+#| label: plot model comparison
 results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False)
 plt.tight_layout()
 plt.show()
@@ -478,4 +505,48 @@ for ax, (model_name, errors) in zip(axes, percentage_errors.items()):
 
 plt.tight_layout()
 plt.show()
+```
+
+This uses the best / most consistent modelling process identified in the previous section and then trains the model on the full dataset to produce the final model.
+
+```{python}
+# Set to true if wanted to produce new version of model, and depending on results of comparison you may want to change training process
+retrain = False
+
+if retrain == True:
+    # Get the model and its parameter grid
+    final_model_name = 'XGBoost'
+    final_model = models[final_model_name]
+    final_param_dist = param_distributions[final_model_name]
+
+    # Create the final pipeline
+    final_pipeline = Pipeline(
+        steps=[
+            ('preprocessor', preprocessor),
+            ('model', final_model)
+        ]
+    )
+
+    # Run the hyperparameter search ONCE on the ENTIRE dataset
+    # This is the same as the "inner loop" of the nested cross validation
+    final_search = RandomizedSearchCV(
+        estimator=final_pipeline,
+        param_distributions=final_param_dist,
+        n_iter=15, # This should maybe be increased
+        cv=KFold(n_splits=5, shuffle=True, random_state=42),
+        scoring=mape_scorer,
+        random_state=42,
+        n_jobs=1
+    )
+
+    # Fit on ALL the data
+    final_search.fit(X, y)
+    final_best_model = final_search.best_estimator_
+    final_best_params = final_search.best_params_
+
+    print(f"\n--- Final Model Training Complete ---")
+    print(f"Final Model Type: {final_model_name}")
+    print(f"Final Model Hyperparameters: {final_best_params}")
+
+    joblib.dump(final_best_model, f'model{date.today()}.joblib')
 ```
