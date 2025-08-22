@@ -17,6 +17,8 @@ __pycache__/
 *.pdf
 *.svg
 *.joblib
+*.pkl
+*.pickle
 
 # Exclude output file types
 *.html
