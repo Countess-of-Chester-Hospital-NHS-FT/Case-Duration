@@ -6,3 +6,4 @@ seaborn
 plotly
 category_encoders
 pyodbc
+sqlalchemy
