@@ -32,5 +32,3 @@ Contributions and identification of issues are welcomed. Please open an issue if
 
 ### Acknowledgements
 * This project was primarily developed by [Patrick Devaney](https://github.com/paddy-devan) as part of a Cambridge Spark Level 7 Apprenticeship in Data Science and AI.
-
-## Git config test
