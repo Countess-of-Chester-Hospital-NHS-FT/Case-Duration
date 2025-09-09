@@ -38,6 +38,8 @@ import seaborn as sns
 import pyodbc
 import joblib
 from datetime import date
+from english_words import get_english_words_set
+import random
 ```
 
 ```{python}
@@ -196,7 +198,6 @@ counts_df
 @fig-correlation shows in general numerical features are not highly correlated, which is good as it suggests there is little redundancy. The highest correlation is between systolic and diastolic blood pressure, which is expected as they are measuring the same phenomenon.
 
 ```{python}
-# Cross correlation chart for numeric, binary, and target features
 #| label: fig-correlation
 #| fig-cap: "Cross Correlation Heatmap"
 features_for_corr = numerical_features + binary_features + ['CaseDuration']
@@ -476,12 +477,19 @@ results_df = pd.DataFrame({
 }).T
 ```
 ```{python}
-#| label: plot model comparison
+#| label: fig-model-scores
+#| fig-cap: "Comparison of scoring metrics between the models"
+
 results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False)
 plt.tight_layout()
 plt.show()
+```
 
-# Plot distribution of percentage errors for each model
+
+```{python}
+#| label: fig-error-distribution
+#| fig-cap: "Comparison of error distributions between the models"
+
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 axes = axes.flatten()
 
@@ -507,7 +515,7 @@ plt.tight_layout()
 plt.show()
 ```
 
-This uses the best / most consistent modelling process identified in the previous section and then trains the model on the full dataset to produce the final model.
+The best / most consistent modelling process identified in the previous section is then selected (model name needs to be manually selected) and the selected model/hyperparameters are used on the full dataset to produce the final model.
 
 ```{python}
 # Set to true if wanted to produce new version of model, and depending on results of comparison you may want to change training process
@@ -548,5 +556,18 @@ if retrain == True:
     print(f"Final Model Type: {final_model_name}")
     print(f"Final Model Hyperparameters: {final_best_params}")
 
-    joblib.dump(final_best_model, f'model{date.today()}.joblib')
+    # name the model using a random word
+    web2lowerset = get_english_words_set(['web2'], lower=True)
+    # Weed out the more ridiculous words
+    min_length = 4
+    max_length = 8
+    common_length_words = [
+        word for word in web2lowerset
+        if min_length <= len(word) <= max_length
+    ]
+    random_word = random.choice(list(common_length_words))
+
+    model_file_name = f'{date.today()}_{random_word}.joblib'
+    joblib.dump(final_best_model, model_file_name)
+    print(f"Model saved as: {model_file_name}")
 ```
