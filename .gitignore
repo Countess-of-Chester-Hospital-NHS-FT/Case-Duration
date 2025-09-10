@@ -34,3 +34,6 @@ Thumbs.db
 Thumbs.db:encryptable
 ehthumbs.db
 ehthumbs_vista.db
+
+# Exclude specific files
+script_log.txt
