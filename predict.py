@@ -58,3 +58,6 @@ with engine.begin() as conn:
 engine.dispose()
 
 print("finished writing results")
+
+with open("script_log.txt", "a") as f:
+    f.write(f"Script ran at: {pd.Timestamp.now()}\n")
