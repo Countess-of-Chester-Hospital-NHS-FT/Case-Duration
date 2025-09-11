@@ -45,19 +45,19 @@ import random
 ```{python}
 #| echo: false
 # data import
-# dsn = "coch_p2" 
+dsn = "coch_p2" 
 
-# read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
+read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
 
-# sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_training"
-# data = pd.read_sql_query(sql_query, read_connection)
+sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_training"
+data = pd.read_sql_query(sql_query, read_connection)
 
-# read_connection.close()
+read_connection.close()
 
 # data.to_csv('dataset2.csv', index=False)
 
 # data import
-data = pd.read_csv('dataset2.csv')
+#data = pd.read_csv('dataset2.csv')
 ```
 
 ## Exploratory Data Analysis

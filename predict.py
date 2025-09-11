@@ -4,7 +4,7 @@ import pyodbc
 from sqlalchemy import create_engine, text
 
 # change this manually when you want to update the model
-model_version = "2025-09-09_upsaddle.joblib"
+model_version = "2025-09-11_biotical.joblib"
 
 # import data needing predictions (unbooked waitlist patients)
 dsn = "coch_p2" 
