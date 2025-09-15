@@ -62,18 +62,47 @@ read_connection.close()
 
 ## Exploratory Data Analysis
 
-### Target feature
+### Target feature compared to baseline estimate
+
+The target feature (the one we want to estimate) is CaseDuration - the duration of theatre cases. @fig-target (left) shows the actual distribution of case durations. There are existing estimates available on the waitlist (although their source remains mysterious to me). These will be used as a baseline to compare the model estimates with. @fig-target (right) shows the distributions of these estimates.
 
 ```{python}
 #| label: fig-target
 #| fig-cap: "Histogram of case durations"
 
+# Ensure zero is included as a bin edge
+min_val = min(data['CaseDuration'].min(), data['CernerEstimate'].min(), 0)
+max_val = max(data['CaseDuration'].max(), data['CernerEstimate'].max())
+bins = np.linspace(min_val, max_val, 61)  # 40 bins
 
-plt.figure(figsize=(8, 4))
-sns.histplot(data['CaseDuration'], kde=True, bins=40)
-plt.title(f'Distribution of {'CaseDuration'}')
-plt.xlabel('CaseDuration')
+fig, axes = plt.subplots(1, 2, figsize=(16, 5), sharex=True)
+sns.histplot(data['CaseDuration'], kde=True, bins=bins, ax=axes[0], color='skyblue')
+axes[0].set_title('Distribution of CaseDuration')
+axes[0].set_xlabel('CaseDuration')
+
+sns.histplot(data['CernerEstimate'], kde=True, bins=bins, ax=axes[1], color='salmon')
+axes[1].set_title('Distribution of CernerEstimate')
+axes[1].set_xlabel('CernerEstimate')
+
+axes[0].set_xlim(min_val, max_val)
+axes[1].set_xlim(min_val, max_val)
+plt.tight_layout()
 plt.show()
+
+# Get bin counts and edges for CaseDuration
+counts, bin_edges = np.histogram(data['CaseDuration'], bins=bins)
+
+# Get bin counts and edges for CernerEstimate
+counts_cerner, bin_edges_cerner = np.histogram(data['CernerEstimate'], bins=bins)
+
+bin_df = pd.DataFrame({
+    'Bin_LeftEdge': bin_edges[:-1],
+    'Bin_RightEdge': bin_edges[1:],
+    'CaseDuration_Count': counts,
+    'CernerEstimate_Count': counts_cerner
+})
+
+bin_df.head(100)
 ```
 
 
