@@ -13,6 +13,16 @@ execute:
   warning: false
   message: false
 ---
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+
+# NOTE: to output a dated version of the file to the correct folder (recommended) run 
+# quarto render model_compare_train.qmd --output model_compare_train_250916.html
+# Move-Item model_compare_train_250916.html "S:\Finance & Performance\IM&T\BIReporting\Data science projects\Case Duration - Theatre case duration prediction\model_compare_train\model_compare_train_yymmdd.html"
+# Unfortunately there is no way of specifying this in the document, alternatively just manually rename and move the output file.
+```
 
 ```{python}
 #| echo: false
@@ -62,18 +72,47 @@ read_connection.close()
 
 ## Exploratory Data Analysis
 
-### Target feature
+### Target feature compared to baseline estimate
+
+The target feature (the one we want to estimate) is CaseDuration - the duration of theatre cases. @fig-target (left) shows the actual distribution of case durations. There are existing estimates available on the waitlist (although their source remains mysterious to me). These will be used as a baseline to compare the model estimates with. @fig-target (right) shows the distributions of these estimates.
 
 ```{python}
 #| label: fig-target
 #| fig-cap: "Histogram of case durations"
 
+# Ensure zero is included as a bin edge
+min_val = min(data['CaseDuration'].min(), data['CernerEstimate'].min(), 0)
+max_val = max(data['CaseDuration'].max(), data['CernerEstimate'].max())
+bins = np.linspace(min_val, max_val, 61)  # 40 bins
 
-plt.figure(figsize=(8, 4))
-sns.histplot(data['CaseDuration'], kde=True, bins=40)
-plt.title(f'Distribution of {'CaseDuration'}')
-plt.xlabel('CaseDuration')
+fig, axes = plt.subplots(1, 2, figsize=(16, 5), sharex=True)
+sns.histplot(data['CaseDuration'], kde=True, bins=bins, ax=axes[0], color='skyblue')
+axes[0].set_title('Distribution of CaseDuration')
+axes[0].set_xlabel('CaseDuration')
+
+sns.histplot(data['CernerEstimate'], kde=True, bins=bins, ax=axes[1], color='salmon')
+axes[1].set_title('Distribution of CernerEstimate')
+axes[1].set_xlabel('CernerEstimate')
+
+axes[0].set_xlim(min_val, max_val)
+axes[1].set_xlim(min_val, max_val)
+plt.tight_layout()
 plt.show()
+
+# Get bin counts and edges for CaseDuration
+# counts, bin_edges = np.histogram(data['CaseDuration'], bins=bins)
+
+# # Get bin counts and edges for CernerEstimate
+# counts_cerner, bin_edges_cerner = np.histogram(data['CernerEstimate'], bins=bins)
+
+# bin_df = pd.DataFrame({
+#     'Bin_LeftEdge': bin_edges[:-1],
+#     'Bin_RightEdge': bin_edges[1:],
+#     'CaseDuration_Count': counts,
+#     'CernerEstimate_Count': counts_cerner
+# })
+
+# bin_df.head(100)
 ```
 
 
@@ -371,6 +410,30 @@ scoring = {
     'Percent Underage': make_scorer(percent_underage, greater_is_better=False)
 }
 ```
+
+```{python}
+#| label: score baseline estimates
+
+baseline_data = data[data['CernerEstimate'].notna()]
+
+# Compute evaluation metrics
+mape = mean_absolute_percentage_error(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
+pct_within_10 = percentage_within_10(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
+pct_overage = percent_overage(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
+pct_underage = percent_underage(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
+
+# Create a dictionary for baseline metrics
+baseline_metrics = {
+    'MAPE': mape,
+    'Percentage Within 10%': pct_within_10,
+    'Percent Overage': pct_overage,
+    'Percent Underage': pct_underage
+}
+
+# Convert to DataFrame
+baseline_df = pd.DataFrame({'Cerner Estimate': baseline_metrics}).T
+```
+
 ```{python}
 #| label: split data and prep for nested validation
 
@@ -387,6 +450,12 @@ outer_results = {}
 # Initialize dictionary to store percentage errors for visualization
 percentage_errors = {}
 
+# Percentage errors for baseline
+fold_percentage_errors = []
+epsilon = 1e-10
+percentage_error = (baseline_data['CernerEstimate'] - baseline_data['CaseDuration'].values) / (baseline_data['CaseDuration'].values + epsilon)
+fold_percentage_errors.extend(percentage_error)
+percentage_errors['CernerEstimate'] = np.array(fold_percentage_errors)
 ```
 
 ```{python}
@@ -475,12 +544,22 @@ results_df = pd.DataFrame({
     model_name: {metric_name: metrics[metric_name]['mean'] for metric_name in metrics}
     for model_name, metrics in outer_results.items()
 }).T
+
+ci_df = pd.DataFrame({
+    model_name: {metric_name: metrics[metric_name]['std'] for metric_name in metrics}
+    for model_name, metrics in outer_results.items()
+}).T
 ```
 ```{python}
 #| label: fig-model-scores
 #| fig-cap: "Comparison of scoring metrics between the models"
 
-results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False)
+# Concatenate baseline_df above results_df
+results_df = pd.concat([baseline_df, results_df], axis=0)
+ci_df.loc['Cerner Estimate'] = [0] * len(ci_df.columns) 
+ci_df = ci_df.reindex(results_df.index)
+
+results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False, yerr=ci_df, capsize=5)
 plt.tight_layout()
 plt.show()
 ```
@@ -490,7 +569,7 @@ plt.show()
 #| label: fig-error-distribution
 #| fig-cap: "Comparison of error distributions between the models"
 
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+fig, axes = plt.subplots(2, 3, figsize=(14, 10))
 axes = axes.flatten()
 
 for ax, (model_name, errors) in zip(axes, percentage_errors.items()):
@@ -507,6 +586,35 @@ for ax, (model_name, errors) in zip(axes, percentage_errors.items()):
         edgecolor='black'
     )
     ax.set_xlim(-100, 100)
+    ax.set_xlabel('Percentage Error (%)')
+    ax.set_ylabel('Proportion of Predictions')
+    ax.set_title(f'Distribution of Errors: {model_name}')
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-error-distribution-unclipped
+#| fig-cap: "Comparison of error distributions between the models (unclipped)"
+
+fig, axes = plt.subplots(2, 3, figsize=(14, 10))
+axes = axes.flatten()
+
+for ax, (model_name, errors) in zip(axes, percentage_errors.items()):
+    # Convert to percentage
+    percentage_error_percent = errors * 100
+    # Clip percentage errors to range -100% to +100%
+    #percentage_error_percent = np.clip(percentage_error_percent, -100, 100)
+    # Plot histogram
+    ax.hist(
+        percentage_error_percent,
+        bins=50,
+        #range=(-100, 100),
+        weights=np.ones_like(percentage_error_percent) / len(percentage_error_percent),
+        edgecolor='black'
+    )
+    #ax.set_xlim(-100, 100)
     ax.set_xlabel('Percentage Error (%)')
     ax.set_ylabel('Proportion of Predictions')
     ax.set_title(f'Distribution of Errors: {model_name}')
