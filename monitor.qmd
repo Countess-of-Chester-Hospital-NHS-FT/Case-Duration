@@ -1,0 +1,81 @@
+---
+title: "Theatre Case Duration Prediction - Monitoring"
+subtitle: "Shows analysis of real performance"
+author: "COCH Data & Analytics Team"
+date: today
+format:
+  html:
+    code-fold: true
+    toc: true
+    toc-float: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+```{python}
+#| label: library import
+import pandas as pd
+import numpy as np
+import pyodbc
+import plotly.express as px
+```
+
+```{python}
+#| label: data-imports
+dsn = "coch_p2" 
+
+read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
+
+sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_monitoring"
+data = pd.read_sql_query(sql_query, read_connection)
+
+read_connection.close()
+```
+
+```{python}
+#| label: numbers of predictions by week
+
+# wrangle model names
+data['model_name'] = data['model_version'].str.extract(r'_([a-z]+)') #this is a look back expression
+data['model_name'] = data['model_name'].fillna('original')
+
+# add a column weekstart
+data['weekstart'] = data['model_prediction_date'].dt.to_period('W').dt.start_time
+data['weekstart'] = data['weekstart'].dt.date
+
+# count predictions for each weekstart and find model mode
+summary = (
+    data.groupby('weekstart')
+        .agg(
+            n=('weekstart', 'size'),
+            model_mode=('model_name', lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan)
+        )
+        .reset_index()
+)
+
+# create a sequence of weekstarts
+min_date = min(data['weekstart'])
+max_date = max(data['weekstart'])
+
+weekstarts = pd.date_range(start=min_date, end=max_date, freq='W-MON').date
+weekstarts = pd.Series(weekstarts, name='weekstart')
+count_df = pd.merge(weekstarts.to_frame(), summary, on='weekstart', how='left')
+count_df['n'] = count_df['n'].fillna(0)
+count_df['model_mode'] = count_df['model_mode'].fillna('none')
+# 
+
+```
+
+```{python}
+#| label: mape of predictions by week / mape of cerner estimates by week
+
+
+```
+
+```{python}
+#| label: mape of cerner estimates by week
+
+
+```
