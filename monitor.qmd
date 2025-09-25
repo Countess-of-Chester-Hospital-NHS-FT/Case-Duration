@@ -20,6 +20,9 @@ import pandas as pd
 import numpy as np
 import pyodbc
 import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
+pio.templates.default = "plotly_white"
 ```
 
 ```{python}
@@ -35,7 +38,7 @@ read_connection.close()
 ```
 
 ```{python}
-#| label: numbers of predictions by week
+#| label: wrangling - numbers of predictions by week
 
 # wrangle model names
 data['model_name'] = data['model_version'].str.extract(r'_([a-z]+)') #this is a look back expression
@@ -44,6 +47,10 @@ data['model_name'] = data['model_name'].fillna('original')
 # add a column weekstart
 data['weekstart'] = data['model_prediction_date'].dt.to_period('W').dt.start_time
 data['weekstart'] = data['weekstart'].dt.date
+
+# add a column monthly
+data['monthstart'] = data['model_prediction_date'].dt.to_period('M').dt.start_time
+data['monthstart'] = data['monthstart'].dt.date
 
 # count predictions for each weekstart and find model mode
 summary = (
@@ -55,17 +62,93 @@ summary = (
         .reset_index()
 )
 
+# count predictions for each weekstart and find model mode
+summary_monthly = (
+    data.groupby('monthstart')
+        .agg(
+            n=('monthstart', 'size'),
+            model_mode=('model_name', lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan)
+        )
+        .reset_index()
+)
+
 # create a sequence of weekstarts
 min_date = min(data['weekstart'])
 max_date = max(data['weekstart'])
 
+#create a sequence of monthstarts
+min_month = min(data['monthstart'])
+max_month = max(data['monthstart'])
+
 weekstarts = pd.date_range(start=min_date, end=max_date, freq='W-MON').date
 weekstarts = pd.Series(weekstarts, name='weekstart')
+
+# weekly count
 count_df = pd.merge(weekstarts.to_frame(), summary, on='weekstart', how='left')
 count_df['n'] = count_df['n'].fillna(0)
 count_df['model_mode'] = count_df['model_mode'].fillna('none')
-# 
+```
 
+The charts below show the number of booked cases each week that had a prediction and have now happened. It normally takes 4-6 weeks between prediction and booking and a case taking place. We can use these cases to test the real world performance of the model.
+
+```{python}
+# Create a bar chart of weekly predictions
+fig = px.bar(
+    count_df,
+    x='weekstart', 
+    y='n',
+    color='model_mode',
+    title="Number of Predictions by Week",
+    template="simple_white"
+)
+
+fig.add_trace(go.Scatter(
+    x=[min(count_df['weekstart']), max(count_df['weekstart'])],
+    y=[24, 24],
+    mode='lines',
+    line=dict(color='red', dash='dash'),
+    name='Average no. cases'
+))
+
+fig.update_layout(
+    yaxis_title="Number of Predictions",
+    xaxis_title=None,
+    xaxis=dict(
+        tickmode='array',
+        tickvals=count_df['weekstart'],
+        tickformat='%d %b %Y'
+    )
+)
+```
+
+```{python}
+# Create a monthly prediction count chart
+fig = px.bar(
+    summary_monthly,
+    x='monthstart', 
+    y='n',
+    color='model_mode',
+    title="Number of Predictions by Month",
+    template="simple_white"
+)
+
+fig.add_trace(go.Scatter(
+    x=[min(summary_monthly['monthstart']), max(summary_monthly['monthstart'])],
+    y=[100, 100],
+    mode='lines',
+    line=dict(color='red', dash='dash'),
+    name='Average no. cases'
+))
+
+fig.update_layout(
+    yaxis_title="Number of Predictions",
+    xaxis_title=None,
+    xaxis=dict(
+        tickmode='array',
+        tickvals=summary_monthly['monthstart'],
+        tickformat='%d %b %Y'
+    )
+)
 ```
 
 ```{python}
@@ -75,7 +158,48 @@ count_df['model_mode'] = count_df['model_mode'].fillna('none')
 ```
 
 ```{python}
-#| label: mape of cerner estimates by week
+# #| label: mape of cerner estimates by week
+# fig = go.Figure()
 
+# # Add a horizontal dashed line at y=24
+# fig.add_trace(go.Scatter(
+#     x=[min(count_df['weekstart']), max(count_df['weekstart'])],  # span the entire x-axis
+#     y=[24, 24],  # constant y value
+#     mode='lines',
+#     line=dict(color='red', dash='dash'),  # dashed line
+#     name='Average no. cases',  # optional name for legend
+#     showlegend=True  # show in legend
+# ))
+
+# # Add line trace first (so it appears behind)
+# fig.add_trace(go.Scatter(
+#     x=count_df['weekstart'],
+#     y=count_df['n'],
+#     mode='lines',
+#     line=dict(color='gray'),
+#     showlegend=False
+# ))
+
+# # Add scatter points on top
+# for model in count_df['model_mode'].unique():
+#     mask = count_df['model_mode'] == model
+#     fig.add_trace(go.Scatter(
+#         x=count_df.loc[mask, 'weekstart'],
+#         y=count_df.loc[mask, 'n'],
+#         mode='markers',
+#         marker=dict(size=10),
+#         name=model
+#     ))
+
+# fig.update_layout(
+#   title="Predictions by Week",
+#   yaxis_title="Number of Predictions",
+#   xaxis=dict(
+#     tickmode='array',
+#     tickvals=count_df['weekstart'],
+#     # Optional: format date ticks 
+#     tickformat='%d %b %Y'
+#   ))
+# fig.show()
 
 ```
