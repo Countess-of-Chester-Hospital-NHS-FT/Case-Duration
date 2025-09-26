@@ -12,6 +12,7 @@ format:
 execute:
   warning: false
   message: false
+  cell: false  
 ---
 
 ```{python}
@@ -52,58 +53,58 @@ data['weekstart'] = data['weekstart'].dt.date
 data['monthstart'] = data['model_prediction_date'].dt.to_period('M').dt.start_time
 data['monthstart'] = data['monthstart'].dt.date
 
-# count predictions for each weekstart and find model mode
-summary = (
-    data.groupby('weekstart')
-        .agg(
-            n=('weekstart', 'size'),
-            model_mode=('model_name', lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan)
-        )
-        .reset_index()
-)
-
-# count predictions for each weekstart and find model mode
-summary_monthly = (
-    data.groupby('monthstart')
-        .agg(
-            n=('monthstart', 'size'),
-            model_mode=('model_name', lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan)
-        )
-        .reset_index()
-)
-
-# create a sequence of weekstarts
-min_date = min(data['weekstart'])
-max_date = max(data['weekstart'])
-
-#create a sequence of monthstarts
-min_month = min(data['monthstart'])
-max_month = max(data['monthstart'])
-
-weekstarts = pd.date_range(start=min_date, end=max_date, freq='W-MON').date
-weekstarts = pd.Series(weekstarts, name='weekstart')
-
-# weekly count
-count_df = pd.merge(weekstarts.to_frame(), summary, on='weekstart', how='left')
-count_df['n'] = count_df['n'].fillna(0)
-count_df['model_mode'] = count_df['model_mode'].fillna('none')
 ```
 
 The charts below show the number of booked cases each week that had a prediction and have now happened. It normally takes 4-6 weeks between prediction and booking and a case taking place. We can use these cases to test the real world performance of the model.
 
 ```{python}
+#| label: calculating mae and mape
+data['model_abs_error'] = (data['CaseDuration'] - data['model_prediction']).abs()
+data['model_absp_error'] = (data['model_abs_error'] / data['CaseDuration'])*100.0
+data['cerner_abs_error'] = (data['CaseDuration'] - data['CernerEstimate']).abs()
+data['cerner_absp_error'] = (data['cerner_abs_error'] / data['CaseDuration'])*100.0
+
+# weekly summary
+weekly_mae_summary = (
+    data.groupby('weekstart')
+        .agg(
+            n=('weekstart', 'size'),
+            model_mode=('model_name', lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan),
+            model_mae=('model_abs_error', 'mean'),
+            model_mape=('model_absp_error', 'mean'),
+            cerner_mae=('cerner_abs_error', 'mean'),
+            cerner_mape=('cerner_absp_error', 'mean')
+        )
+        .reset_index()
+)
+
+# monthly summary
+monthly_mae_summary = (
+    data.groupby('monthstart')
+        .agg(
+            n=('monthstart', 'size'),
+            model_mode=('model_name', lambda x: x.mode().iloc[0] if not x.mode().empty else np.nan),
+            model_mae=('model_abs_error', 'mean'),
+            model_mape=('model_absp_error', 'mean'),
+            cerner_mae=('cerner_abs_error', 'mean'),
+            cerner_mape=('cerner_absp_error', 'mean')
+        )
+        .reset_index()
+)
+```
+
+```{python}
 # Create a bar chart of weekly predictions
 fig = px.bar(
-    count_df,
+    weekly_mae_summary,
     x='weekstart', 
     y='n',
     color='model_mode',
-    title="Number of Predictions by Week",
-    template="simple_white"
+    title="Number of Predictions by Week"
 )
 
 fig.add_trace(go.Scatter(
-    x=[min(count_df['weekstart']), max(count_df['weekstart'])],
+    x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
     y=[24, 24],
     mode='lines',
     line=dict(color='red', dash='dash'),
@@ -113,9 +114,16 @@ fig.add_trace(go.Scatter(
 fig.update_layout(
     yaxis_title="Number of Predictions",
     xaxis_title=None,
+    legend=dict(
+        orientation="h",           
+        yanchor="bottom",
+        y=-0.2,                    
+        xanchor="center",
+        x=0.5
+    ),
     xaxis=dict(
         tickmode='array',
-        tickvals=count_df['weekstart'],
+        tickvals=weekly_mae_summary['weekstart'],
         tickformat='%d %b %Y'
     )
 )
@@ -124,16 +132,15 @@ fig.update_layout(
 ```{python}
 # Create a monthly prediction count chart
 fig = px.bar(
-    summary_monthly,
+    monthly_mae_summary,
     x='monthstart', 
     y='n',
     color='model_mode',
-    title="Number of Predictions by Month",
-    template="simple_white"
+    title="Number of Predictions by Month"
 )
 
 fig.add_trace(go.Scatter(
-    x=[min(summary_monthly['monthstart']), max(summary_monthly['monthstart'])],
+    x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
     y=[100, 100],
     mode='lines',
     line=dict(color='red', dash='dash'),
@@ -143,63 +150,351 @@ fig.add_trace(go.Scatter(
 fig.update_layout(
     yaxis_title="Number of Predictions",
     xaxis_title=None,
+    legend=dict(
+        orientation="h",           
+        yanchor="bottom",
+        y=-0.2,                    
+        xanchor="center",
+        x=0.5
+    ),
     xaxis=dict(
         tickmode='array',
-        tickvals=summary_monthly['monthstart'],
+        tickvals=monthly_mae_summary['monthstart'],
         tickformat='%d %b %Y'
     )
 )
 ```
 
 ```{python}
-#| label: mape of predictions by week / mape of cerner estimates by week
+#| label: figure mape per week
 
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
+    y=[32.75, 32.75], 
+    mode='lines',
+    line=dict(color='red', dash='dash'),
+    name='Expected MAPE (biotical)', 
+    showlegend=True,
+    opacity=0.5
+))
+
+fig.add_trace(go.Scatter(
+    x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
+    y=[32.75+2.59, 32.75+2.59], 
+    mode='lines',
+    line=dict(color='black', dash='dash'),
+    showlegend=False,
+    opacity=0.25
+))
+
+fig.add_trace(go.Scatter(
+    x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
+    y=[32.75-2.59, 32.75-2.59], 
+    mode='lines',
+    line=dict(color='black', dash='dash'),
+    showlegend=False,
+    opacity=0.25
+))
+
+fig.add_trace(go.Scatter(
+    x=weekly_mae_summary['weekstart'],
+    y=weekly_mae_summary['model_mape'],
+    mode='lines+markers',
+    line=dict(color='black'),
+    showlegend=True,
+    name='Model'
+))
+
+fig.add_trace(go.Scatter(
+    x=weekly_mae_summary['weekstart'],
+    y=weekly_mae_summary['cerner_mape'],
+    mode='lines+markers',
+    line=dict(color='gray'),
+    showlegend=True,
+    name='Cerner baseline'
+))
+
+
+for model in weekly_mae_summary['model_mode'].unique():
+    mask = weekly_mae_summary['model_mode'] == model
+    fig.add_trace(go.Scatter(
+        x=weekly_mae_summary.loc[mask, 'weekstart'],
+        y=weekly_mae_summary.loc[mask, 'model_mape'],
+        mode='markers',
+        marker=dict(size=8),
+        name=model
+    ))
+
+fig.update_layout(
+  title="MAPE by Week",
+  yaxis_title="MAPE (%)",
+  legend=dict(
+        orientation="h",           
+        yanchor="bottom",
+        y=-0.2,                    
+        xanchor="center",
+        x=0.5
+    ),
+  xaxis=dict(
+    tickmode='array',
+    tickvals=weekly_mae_summary['weekstart'],
+    # Optional: format date ticks 
+    tickformat='%d %b %Y'
+  ))
+
+fig.show()
+```
+
+```{python}
+#| label: figure mape per month
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
+    y=[32.75, 32.75], 
+    mode='lines',
+    line=dict(color='red', dash='dash'),
+    name='Expected MAPE (biotical)', 
+    showlegend=True,
+    opacity=0.5
+))
+
+fig.add_trace(go.Scatter(
+    x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
+    y=[32.75+2.59, 32.75+2.59], 
+    mode='lines',
+    line=dict(color='black', dash='dash'),
+    showlegend=False,
+    opacity=0.25
+))
+
+fig.add_trace(go.Scatter(
+    x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
+    y=[32.75-2.59, 32.75-2.59], 
+    mode='lines',
+    line=dict(color='black', dash='dash'),
+    showlegend=False,
+    opacity=0.25
+))
+
+fig.add_trace(go.Scatter(
+    x=monthly_mae_summary['monthstart'],
+    y=monthly_mae_summary['model_mape'],
+    mode='lines+markers',
+    line=dict(color='black'),
+    showlegend=True,
+    name='Model'
+))
+
+fig.add_trace(go.Scatter(
+    x=monthly_mae_summary['monthstart'],
+    y=monthly_mae_summary['cerner_mape'],
+    mode='lines+markers',
+    line=dict(color='gray'),
+    showlegend=True,
+    name='Cerner baseline'
+))
+
+
+for model in monthly_mae_summary['model_mode'].unique():
+    mask = monthly_mae_summary['model_mode'] == model
+    fig.add_trace(go.Scatter(
+        x=monthly_mae_summary.loc[mask, 'monthstart'],
+        y=monthly_mae_summary.loc[mask, 'model_mape'],
+        mode='markers',
+        marker=dict(size=8),
+        name=model
+    ))
+
+fig.update_layout(
+  title="MAPE by Month",
+  yaxis_title="MAPE (%)",
+  legend=dict(
+        orientation="h",           
+        yanchor="bottom",
+        y=-0.2,                    
+        xanchor="center",
+        x=0.5
+    ),
+  xaxis=dict(
+    tickmode='array',
+    tickvals=monthly_mae_summary['monthstart'],
+    # Optional: format date ticks 
+    tickformat='%d %b %Y'
+  ))
+
+fig.show()
 
 ```
 
 ```{python}
-# #| label: mape of cerner estimates by week
-# fig = go.Figure()
+#| label: figure mae per week
 
-# # Add a horizontal dashed line at y=24
+fig = go.Figure()
+
 # fig.add_trace(go.Scatter(
-#     x=[min(count_df['weekstart']), max(count_df['weekstart'])],  # span the entire x-axis
-#     y=[24, 24],  # constant y value
+#     x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
+#     y=[32.75, 32.75], 
 #     mode='lines',
-#     line=dict(color='red', dash='dash'),  # dashed line
-#     name='Average no. cases',  # optional name for legend
-#     showlegend=True  # show in legend
+#     line=dict(color='red', dash='dash'),
+#     name='Expected MAPE (biotical)', 
+#     showlegend=True,
+#     opacity=0.5
 # ))
 
-# # Add line trace first (so it appears behind)
 # fig.add_trace(go.Scatter(
-#     x=count_df['weekstart'],
-#     y=count_df['n'],
+#     x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
+#     y=[32.75+2.59, 32.75+2.59], 
 #     mode='lines',
-#     line=dict(color='gray'),
-#     showlegend=False
+#     line=dict(color='black', dash='dash'),
+#     showlegend=False,
+#     opacity=0.25
 # ))
 
-# # Add scatter points on top
-# for model in count_df['model_mode'].unique():
-#     mask = count_df['model_mode'] == model
-#     fig.add_trace(go.Scatter(
-#         x=count_df.loc[mask, 'weekstart'],
-#         y=count_df.loc[mask, 'n'],
-#         mode='markers',
-#         marker=dict(size=10),
-#         name=model
-#     ))
+# fig.add_trace(go.Scatter(
+#     x=[min(weekly_mae_summary['weekstart']), max(weekly_mae_summary['weekstart'])],
+#     y=[32.75-2.59, 32.75-2.59], 
+#     mode='lines',
+#     line=dict(color='black', dash='dash'),
+#     showlegend=False,
+#     opacity=0.25
+# ))
 
-# fig.update_layout(
-#   title="Predictions by Week",
-#   yaxis_title="Number of Predictions",
-#   xaxis=dict(
-#     tickmode='array',
-#     tickvals=count_df['weekstart'],
-#     # Optional: format date ticks 
-#     tickformat='%d %b %Y'
-#   ))
-# fig.show()
+fig.add_trace(go.Scatter(
+    x=weekly_mae_summary['weekstart'],
+    y=weekly_mae_summary['model_mae'],
+    mode='lines+markers',
+    line=dict(color='black'),
+    showlegend=True,
+    name='Model'
+))
+
+fig.add_trace(go.Scatter(
+    x=weekly_mae_summary['weekstart'],
+    y=weekly_mae_summary['cerner_mae'],
+    mode='lines+markers',
+    line=dict(color='gray'),
+    showlegend=True,
+    name='Cerner baseline'
+))
+
+
+for model in weekly_mae_summary['model_mode'].unique():
+    mask = weekly_mae_summary['model_mode'] == model
+    fig.add_trace(go.Scatter(
+        x=weekly_mae_summary.loc[mask, 'weekstart'],
+        y=weekly_mae_summary.loc[mask, 'model_mae'],
+        mode='markers',
+        marker=dict(size=8),
+        name=model
+    ))
+
+fig.update_layout(
+  title="MAE by Week",
+  yaxis_title="MAE (Mins)",
+  legend=dict(
+        orientation="h",           
+        yanchor="bottom",
+        y=-0.2,                    
+        xanchor="center",
+        x=0.5
+    ),
+  xaxis=dict(
+    tickmode='array',
+    tickvals=weekly_mae_summary['weekstart'],
+    # Optional: format date ticks 
+    tickformat='%d %b %Y'
+  ))
+
+fig.show()
+```
+
+
+```{python}
+#| label: figure mae per month
+
+fig = go.Figure()
+
+# fig.add_trace(go.Scatter(
+#     x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
+#     y=[32.75, 32.75], 
+#     mode='lines',
+#     line=dict(color='red', dash='dash'),
+#     name='Expected MAPE (biotical)', 
+#     showlegend=True,
+#     opacity=0.5
+# ))
+
+# fig.add_trace(go.Scatter(
+#     x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
+#     y=[32.75+2.59, 32.75+2.59], 
+#     mode='lines',
+#     line=dict(color='black', dash='dash'),
+#     showlegend=False,
+#     opacity=0.25
+# ))
+
+# fig.add_trace(go.Scatter(
+#     x=[min(monthly_mae_summary['monthstart']), max(monthly_mae_summary['monthstart'])],
+#     y=[32.75-2.59, 32.75-2.59], 
+#     mode='lines',
+#     line=dict(color='black', dash='dash'),
+#     showlegend=False,
+#     opacity=0.25
+# ))
+
+fig.add_trace(go.Scatter(
+    x=monthly_mae_summary['monthstart'],
+    y=monthly_mae_summary['model_mae'],
+    mode='lines+markers',
+    line=dict(color='black'),
+    showlegend=True,
+    name='Model'
+))
+
+fig.add_trace(go.Scatter(
+    x=monthly_mae_summary['monthstart'],
+    y=monthly_mae_summary['cerner_mae'],
+    mode='lines+markers',
+    line=dict(color='gray'),
+    showlegend=True,
+    name='Cerner baseline'
+))
+
+
+for model in monthly_mae_summary['model_mode'].unique():
+    mask = monthly_mae_summary['model_mode'] == model
+    fig.add_trace(go.Scatter(
+        x=monthly_mae_summary.loc[mask, 'monthstart'],
+        y=monthly_mae_summary.loc[mask, 'model_mae'],
+        mode='markers',
+        marker=dict(size=8),
+        name=model
+    ))
+
+fig.update_layout(
+  title="MAE by Month",
+  yaxis_title="MAE (Mins)",
+  legend=dict(
+        orientation="h",           
+        yanchor="bottom",
+        y=-0.2,                    
+        xanchor="center",
+        x=0.5
+    ),
+  xaxis=dict(
+    tickmode='array',
+    tickvals=monthly_mae_summary['monthstart'],
+    # Optional: format date ticks 
+    tickformat='%d %b %Y'
+  ))
+
+fig.show()
 
 ```
+
+### Comments
+Model so far performing worse than would expect from values obtained in training, although this might be skewed due to small numbers so far. Model MAPE worse than Cerner MAPE, but model MAE generally better than Cerner MAE. I think this is because model seems to perform better for long operations, whereas often quite wrong with short procedures (where the percentage error can be high but absolute error still low) and Cerner is the opposite.
