@@ -52,6 +52,9 @@ from english_words import get_english_words_set
 import random
 ```
 
+## Training Notes
+
+
 ```{python}
 #| echo: false
 # data import
@@ -150,8 +153,8 @@ plt.show()
 # split features into categories for plotting and pipeline
 categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex']
 categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory', 'Consultant']
-numerical_features = ['PatientAge', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored']
-binary_features = []
+numerical_features = ['PatientAge', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored', 'DaysAgo']
+binary_features = ['Injection']
 ```
 
 ### Binary features
@@ -161,13 +164,13 @@ No binary features in this dataset.
 #| label: fig-binary
 #| fig-cap: "Average values of binary figures"
 # Binary features bar chart
-#binary_avg = data[binary_features].mean().sort_values()
-#plt.figure(figsize=(10, 6))
-#sns.barplot(x=binary_avg.values, y=binary_avg.index, palette='viridis')
-#plt.xlabel('Proportion of Rows = 1')
-#plt.ylabel('Feature Name')
-#plt.title('Average Values of Binary Features')
-#plt.show()
+binary_avg = data[binary_features].mean().sort_values()
+plt.figure(figsize=(10, 6))
+sns.barplot(x=binary_avg.values, y=binary_avg.index, palette='viridis')
+plt.xlabel('Proportion of Rows = 1')
+plt.ylabel('Feature Name')
+plt.title('Average Values of Binary Features')
+plt.show()
 ```
 
 ### Numerical featues
@@ -627,7 +630,7 @@ The best / most consistent modelling process identified in the previous section 
 
 ```{python}
 # Set to true if wanted to produce new version of model, and depending on results of comparison you may want to change training process
-retrain = False
+retrain = True
 
 if retrain == True:
     # Get the model and its parameter grid
