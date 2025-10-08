@@ -41,7 +41,7 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from xgboost import XGBRegressor
 from category_encoders import TargetEncoder
-from sklearn.metrics import mean_absolute_percentage_error, make_scorer
+from sklearn.metrics import mean_absolute_percentage_error, make_scorer, mean_absolute_error
 from sklearn.base import BaseEstimator, RegressorMixin, clone
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -409,8 +409,11 @@ def percent_underage(y_true, y_pred):
 
 mape_scorer = make_scorer(mean_absolute_percentage_error, greater_is_better=False)
 
+mae_scorer = make_scorer(mean_absolute_error, greater_is_better=False)
+
 # Define the custom scoring dictionary
 scoring = {
+    'MAE': mae_scorer,
     'MAPE': mape_scorer,
     'Percentage Within 10%': make_scorer(percentage_within_10, greater_is_better=True),
     'Percent Overage': make_scorer(percent_overage, greater_is_better=False),
@@ -424,6 +427,7 @@ scoring = {
 baseline_data = data[data['CernerEstimate'].notna()]
 
 # Compute evaluation metrics
+mae = mean_absolute_error(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
 mape = mean_absolute_percentage_error(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
 pct_within_10 = percentage_within_10(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
 pct_overage = percent_overage(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
@@ -431,6 +435,7 @@ pct_underage = percent_underage(baseline_data['CaseDuration'], baseline_data['Ce
 
 # Create a dictionary for baseline metrics
 baseline_metrics = {
+    'MAE': mae,
     'MAPE': mape,
     'Percentage Within 10%': pct_within_10,
     'Percent Overage': pct_overage,
@@ -470,6 +475,7 @@ percentage_errors['CernerEstimate'] = np.array(fold_percentage_errors)
 for model_name, model in models.items():
     print(f"Evaluating {model_name} with nested cross-validation...")
     # Lists to store metrics for each fold
+    mae_scores = []
     mape_scores = []
     pct_within_10_scores = []
     pct_overage_scores = []
@@ -497,9 +503,10 @@ for model_name, model in models.items():
                 param_distributions=param_distributions[model_name],
                 n_iter=30,
                 cv=inner_cv,
-                scoring=mape_scorer,
+                scoring=mae_scorer,
                 random_state=11,
-                n_jobs=1
+                n_jobs=1,
+                refit=True #this is the default - fits on the outer fold
             )
             random_search.fit(X_train_outer, y_train_outer)
             best_model = random_search.best_estimator_
@@ -517,12 +524,14 @@ for model_name, model in models.items():
         fold_percentage_errors.extend(percentage_error)
 
         # Compute evaluation metrics
+        mae = mean_absolute_error(y_test_outer, y_pred_outer)
         mape = mean_absolute_percentage_error(y_test_outer, y_pred_outer)
         pct_within_10 = percentage_within_10(y_test_outer, y_pred_outer)
         pct_overage = percent_overage(y_test_outer, y_pred_outer)
         pct_underage = percent_underage(y_test_outer, y_pred_outer)
 
         # Append metrics
+        mae_scores.append(mae)
         mape_scores.append(mape)
         pct_within_10_scores.append(pct_within_10)
         pct_overage_scores.append(pct_overage)
@@ -530,6 +539,7 @@ for model_name, model in models.items():
 
     # Store the metrics
     outer_results[model_name] = {
+        'MAE': {'mean': np.mean(mae_scores), 'std': np.std(mae_scores)},
         'MAPE': {'mean': np.mean(mape_scores), 'std': np.std(mape_scores)},
         'Percentage Within 10%': {'mean': np.mean(pct_within_10_scores), 'std': np.std(pct_within_10_scores)},
         'Percent Overage': {'mean': np.mean(pct_overage_scores), 'std': np.std(pct_overage_scores)},
@@ -566,7 +576,7 @@ results_df = pd.concat([baseline_df, results_df], axis=0)
 ci_df.loc['Cerner Estimate'] = [0] * len(ci_df.columns) 
 ci_df = ci_df.reindex(results_df.index)
 
-results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False, yerr=ci_df, capsize=5)
+results_df.plot(kind='bar', subplots=True, layout=(2, 3), figsize=(14, 10), legend=False, yerr=ci_df, capsize=5)
 plt.tight_layout()
 plt.show()
 ```
