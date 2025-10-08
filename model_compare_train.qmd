@@ -371,11 +371,11 @@ param_distributions = {
         'model__max_features': ['auto', 'sqrt']
     },
     'XGBoost': {
-        'model__n_estimators': [50, 100, 200],
-        'model__max_depth': [3, 5, 7],
-        'model__learning_rate': [0.01, 0.05, 0.1],
-        'model__subsample': [0.6, 0.8, 1.0],
-        'model__colsample_bytree': [0.6, 0.8, 1.0]
+        'model__n_estimators': [50, 100, 200, 400],
+        'model__max_depth': [3, 4, 5, 6, 7],
+        'model__learning_rate': [0.01, 0.02, 0.05, 0.08, 0.1],
+        'model__subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
+        'model__colsample_bytree': [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     },
     'Gradient Boosting': {
         'model__n_estimators': [50, 100, 200],
@@ -630,7 +630,7 @@ The best / most consistent modelling process identified in the previous section 
 
 ```{python}
 # Set to true if wanted to produce new version of model, and depending on results of comparison you may want to change training process
-retrain = True
+retrain = False
 
 if retrain == True:
     # Get the model and its parameter grid
