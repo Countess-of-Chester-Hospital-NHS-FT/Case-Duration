@@ -53,7 +53,7 @@ import random
 ```
 
 ## Training Notes
-
+This version of the model (09/10/2025) changed Consultant to a OneHot Encoded variable. This is because consultants may do a different case mix, so their mean Case Duration is potentially not meaningful for comparison. I also reduced the smoothing in the Target Encoding of procedure this is because if a procedure only appears once in the training data which happens often I would like the target encoded value to be closer to that value than the global mean.
 
 ```{python}
 #| echo: false
@@ -151,8 +151,8 @@ plt.show()
 ```{python}
 #| code-fold: false
 # split features into categories for plotting and pipeline
-categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex']
-categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory', 'Consultant']
+categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex', 'Consultant']
+categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory'] # split high card into 2 categories - to treat differently in target encoding
 numerical_features = ['PatientAge', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored', 'DaysAgo']
 binary_features = ['Injection']
 ```
@@ -214,9 +214,9 @@ order = data['WaitListOpName'].value_counts().index
 plt.figure(figsize=(8, 40))
 sns.countplot(data['WaitListOpName'], order = order)
 
-order = data['OPCSCategory'].value_counts().index
-plt.figure(figsize=(8, 30))
-sns.countplot(data['OPCSCategory'], order = order)
+#order = data['OPCSCategory'].value_counts().index
+#plt.figure(figsize=(8, 30))
+#sns.countplot(data['OPCSCategory'], order = order)
 ```
 
 ```{python}
@@ -230,9 +230,9 @@ counts_df
 ```{python}
 #| label: tbl-opcs
 #| tbl-cap: "Count of distinct procedure names"
-counts_df = data['OPCSCategory'].value_counts().reset_index()
-counts_df.columns = ['OPCSCategory', 'Count']
-counts_df
+#counts_df = data['OPCSCategory'].value_counts().reset_index()
+#counts_df.columns = ['OPCSCategory', 'Count']
+#counts_df
 ```
 
 ### Cross Correlation between numerical features
@@ -271,7 +271,10 @@ categorical_low_transformer = Pipeline(
         #('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
         ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),  
         #missing data in this column is not np.nan, but python None
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ('onehot', OneHotEncoder(
+            handle_unknown='ignore',
+            min_frequency=0.01)
+        )
     ]
 )
 
@@ -279,10 +282,11 @@ categorical_high_transformer = Pipeline(
     steps=[
         #('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
         ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),
-        ('target_enc', TargetEncoder()),
+        ('target_enc', TargetEncoder(min_samples_leaf=0)),
         ('scaler', StandardScaler())
     ]
 )
+
 
 preprocessor = ColumnTransformer(
     transformers=[
@@ -303,7 +307,7 @@ This is what the data looks like after its been passed through the pipeline. The
 #| tbl-cap: "Post pipeline table of training data for inspection"
 # define target and features
 y = data['CaseDuration']
-X = data[categorical_low_cardinality + categorical_high_cardinality + numerical_features + binary_features]
+X = data[categorical_low_cardinality + categorical_high_cardinality + binary_features + numerical_features]
 
 # split data into train and test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)

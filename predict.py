@@ -5,7 +5,7 @@ import os
 from sqlalchemy import create_engine, text
 
 # change this manually when you want to update the model
-model_version = "2025-09-30_philippe.joblib"
+model_version = "2025-10-09_caveator.joblib"
 base_path = r"S:\Finance & Performance\IM&T\BIReporting\Data science projects\Case Duration - Theatre case duration prediction\models"
 model_path = os.path.join(base_path, model_version)
 
