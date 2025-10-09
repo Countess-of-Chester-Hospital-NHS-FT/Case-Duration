@@ -503,7 +503,7 @@ for model_name, model in models.items():
                 param_distributions=param_distributions[model_name],
                 n_iter=30,
                 cv=inner_cv,
-                scoring=mae_scorer,
+                scoring=mape_scorer,
                 random_state=11,
                 n_jobs=1,
                 refit=True #this is the default - fits on the outer fold
@@ -665,10 +665,10 @@ if retrain == True:
     final_search = RandomizedSearchCV(
         estimator=final_pipeline,
         param_distributions=final_param_dist,
-        n_iter=15, # This should maybe be increased
-        cv=KFold(n_splits=5, shuffle=True, random_state=42),
+        n_iter=40, # This should maybe be increased
+        cv=KFold(n_splits=3, shuffle=True, random_state=23),
         scoring=mape_scorer,
-        random_state=42,
+        random_state=11,
         n_jobs=1
     )
 
