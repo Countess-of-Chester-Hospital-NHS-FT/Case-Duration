@@ -41,7 +41,7 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from xgboost import XGBRegressor
 from category_encoders import TargetEncoder
-from sklearn.metrics import mean_absolute_percentage_error, make_scorer
+from sklearn.metrics import mean_absolute_percentage_error, make_scorer, mean_absolute_error
 from sklearn.base import BaseEstimator, RegressorMixin, clone
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -53,7 +53,7 @@ import random
 ```
 
 ## Training Notes
-
+This version of the model (09/10/2025) changed Consultant to a OneHot Encoded variable. This is because consultants may do a different case mix, so their mean Case Duration is potentially not meaningful for comparison. I also reduced the smoothing in the Target Encoding of procedure this is because if a procedure only appears once in the training data which happens often I would like the target encoded value to be closer to that value than the global mean.
 
 ```{python}
 #| echo: false
@@ -151,8 +151,8 @@ plt.show()
 ```{python}
 #| code-fold: false
 # split features into categories for plotting and pipeline
-categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex']
-categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory', 'Consultant']
+categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex', 'Consultant']
+categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory'] # split high card into 2 categories - to treat differently in target encoding
 numerical_features = ['PatientAge', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored', 'DaysAgo']
 binary_features = ['Injection']
 ```
@@ -214,9 +214,9 @@ order = data['WaitListOpName'].value_counts().index
 plt.figure(figsize=(8, 40))
 sns.countplot(data['WaitListOpName'], order = order)
 
-order = data['OPCSCategory'].value_counts().index
-plt.figure(figsize=(8, 30))
-sns.countplot(data['OPCSCategory'], order = order)
+#order = data['OPCSCategory'].value_counts().index
+#plt.figure(figsize=(8, 30))
+#sns.countplot(data['OPCSCategory'], order = order)
 ```
 
 ```{python}
@@ -230,9 +230,9 @@ counts_df
 ```{python}
 #| label: tbl-opcs
 #| tbl-cap: "Count of distinct procedure names"
-counts_df = data['OPCSCategory'].value_counts().reset_index()
-counts_df.columns = ['OPCSCategory', 'Count']
-counts_df
+#counts_df = data['OPCSCategory'].value_counts().reset_index()
+#counts_df.columns = ['OPCSCategory', 'Count']
+#counts_df
 ```
 
 ### Cross Correlation between numerical features
@@ -271,7 +271,10 @@ categorical_low_transformer = Pipeline(
         #('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
         ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),  
         #missing data in this column is not np.nan, but python None
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ('onehot', OneHotEncoder(
+            handle_unknown='ignore',
+            min_frequency=0.01)
+        )
     ]
 )
 
@@ -279,10 +282,11 @@ categorical_high_transformer = Pipeline(
     steps=[
         #('imputer', SimpleImputer(strategy='constant', fill_value='Missing', missing_values=None)),
         ('imputer', SimpleImputer(strategy='constant', fill_value='Missing')),
-        ('target_enc', TargetEncoder()),
+        ('target_enc', TargetEncoder(min_samples_leaf=0)),
         ('scaler', StandardScaler())
     ]
 )
+
 
 preprocessor = ColumnTransformer(
     transformers=[
@@ -303,7 +307,7 @@ This is what the data looks like after its been passed through the pipeline. The
 #| tbl-cap: "Post pipeline table of training data for inspection"
 # define target and features
 y = data['CaseDuration']
-X = data[categorical_low_cardinality + categorical_high_cardinality + numerical_features + binary_features]
+X = data[categorical_low_cardinality + categorical_high_cardinality + binary_features + numerical_features]
 
 # split data into train and test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
@@ -371,11 +375,15 @@ param_distributions = {
         'model__max_features': ['auto', 'sqrt']
     },
     'XGBoost': {
-        'model__n_estimators': [50, 100, 200, 400],
+        'model__n_estimators': [50, 100, 200, 400, 800, 1100],
         'model__max_depth': [3, 4, 5, 6, 7],
-        'model__learning_rate': [0.01, 0.02, 0.05, 0.08, 0.1],
+        'model__learning_rate': [0.005, 0.01, 0.02, 0.03, 0.05, 0.07, 0.1],
         'model__subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
-        'model__colsample_bytree': [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        'model__colsample_bytree': [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        'model__min_child_weight': [1, 2, 4, 6],
+        'model__gamma': [0, 0.5, 1, 2],
+        'model__reg_lambda': [0.5, 1, 2, 5, 10],
+        'model__reg_alpha': [0, 0.1, 0.5, 1, 2]
     },
     'Gradient Boosting': {
         'model__n_estimators': [50, 100, 200],
@@ -405,8 +413,11 @@ def percent_underage(y_true, y_pred):
 
 mape_scorer = make_scorer(mean_absolute_percentage_error, greater_is_better=False)
 
+mae_scorer = make_scorer(mean_absolute_error, greater_is_better=False)
+
 # Define the custom scoring dictionary
 scoring = {
+    'MAE': mae_scorer,
     'MAPE': mape_scorer,
     'Percentage Within 10%': make_scorer(percentage_within_10, greater_is_better=True),
     'Percent Overage': make_scorer(percent_overage, greater_is_better=False),
@@ -420,6 +431,7 @@ scoring = {
 baseline_data = data[data['CernerEstimate'].notna()]
 
 # Compute evaluation metrics
+mae = mean_absolute_error(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
 mape = mean_absolute_percentage_error(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
 pct_within_10 = percentage_within_10(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
 pct_overage = percent_overage(baseline_data['CaseDuration'], baseline_data['CernerEstimate'])
@@ -427,6 +439,7 @@ pct_underage = percent_underage(baseline_data['CaseDuration'], baseline_data['Ce
 
 # Create a dictionary for baseline metrics
 baseline_metrics = {
+    'MAE': mae,
     'MAPE': mape,
     'Percentage Within 10%': pct_within_10,
     'Percent Overage': pct_overage,
@@ -466,6 +479,7 @@ percentage_errors['CernerEstimate'] = np.array(fold_percentage_errors)
 for model_name, model in models.items():
     print(f"Evaluating {model_name} with nested cross-validation...")
     # Lists to store metrics for each fold
+    mae_scores = []
     mape_scores = []
     pct_within_10_scores = []
     pct_overage_scores = []
@@ -487,15 +501,16 @@ for model_name, model in models.items():
 
         # Hyperparameter tuning (inner cross-validation)
         if model_name in param_distributions:
-            inner_cv = KFold(n_splits=3, shuffle=True, random_state=42)
+            inner_cv = KFold(n_splits=3, shuffle=True, random_state=23)
             random_search = RandomizedSearchCV(
                 estimator=pipeline,
                 param_distributions=param_distributions[model_name],
-                n_iter=10,
+                n_iter=30,
                 cv=inner_cv,
                 scoring=mape_scorer,
-                random_state=42,
-                n_jobs=1
+                random_state=11,
+                n_jobs=1,
+                refit=True #this is the default - fits on the outer fold
             )
             random_search.fit(X_train_outer, y_train_outer)
             best_model = random_search.best_estimator_
@@ -513,12 +528,14 @@ for model_name, model in models.items():
         fold_percentage_errors.extend(percentage_error)
 
         # Compute evaluation metrics
+        mae = mean_absolute_error(y_test_outer, y_pred_outer)
         mape = mean_absolute_percentage_error(y_test_outer, y_pred_outer)
         pct_within_10 = percentage_within_10(y_test_outer, y_pred_outer)
         pct_overage = percent_overage(y_test_outer, y_pred_outer)
         pct_underage = percent_underage(y_test_outer, y_pred_outer)
 
         # Append metrics
+        mae_scores.append(mae)
         mape_scores.append(mape)
         pct_within_10_scores.append(pct_within_10)
         pct_overage_scores.append(pct_overage)
@@ -526,6 +543,7 @@ for model_name, model in models.items():
 
     # Store the metrics
     outer_results[model_name] = {
+        'MAE': {'mean': np.mean(mae_scores), 'std': np.std(mae_scores)},
         'MAPE': {'mean': np.mean(mape_scores), 'std': np.std(mape_scores)},
         'Percentage Within 10%': {'mean': np.mean(pct_within_10_scores), 'std': np.std(pct_within_10_scores)},
         'Percent Overage': {'mean': np.mean(pct_overage_scores), 'std': np.std(pct_overage_scores)},
@@ -562,7 +580,7 @@ results_df = pd.concat([baseline_df, results_df], axis=0)
 ci_df.loc['Cerner Estimate'] = [0] * len(ci_df.columns) 
 ci_df = ci_df.reindex(results_df.index)
 
-results_df.plot(kind='bar', subplots=True, layout=(2, 2), figsize=(14, 10), legend=False, yerr=ci_df, capsize=5)
+results_df.plot(kind='bar', subplots=True, layout=(2, 3), figsize=(14, 10), legend=False, yerr=ci_df, capsize=5)
 plt.tight_layout()
 plt.show()
 ```
@@ -651,10 +669,10 @@ if retrain == True:
     final_search = RandomizedSearchCV(
         estimator=final_pipeline,
         param_distributions=final_param_dist,
-        n_iter=15, # This should maybe be increased
-        cv=KFold(n_splits=5, shuffle=True, random_state=42),
+        n_iter=40, # This should maybe be increased
+        cv=KFold(n_splits=3, shuffle=True, random_state=23),
         scoring=mape_scorer,
-        random_state=42,
+        random_state=11,
         n_jobs=1
     )
 
