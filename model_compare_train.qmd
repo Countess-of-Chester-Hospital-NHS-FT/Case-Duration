@@ -591,12 +591,30 @@ ci_df = pd.DataFrame({
 #| label: fig-model-scores
 #| fig-cap: "Comparison of scoring metrics between the models"
 
+# Convert results to DataFrame for plotting
+results_df = pd.DataFrame({
+    model_name: {metric_name: metrics[metric_name]['mean'] for metric_name in metrics}
+    for model_name, metrics in outer_results.items()
+}).T
+
+ci_df = pd.DataFrame({
+    model_name: {metric_name: metrics[metric_name]['std'] for metric_name in metrics}
+    for model_name, metrics in outer_results.items()
+}).T
+
 # Concatenate baseline_df above results_df
 results_df = pd.concat([baseline_df, results_df], axis=0)
 ci_df.loc['Cerner Estimate'] = [0] * len(ci_df.columns) 
 ci_df = ci_df.reindex(results_df.index)
 
 results_df.plot(kind='bar', subplots=True, layout=(2, 3), figsize=(14, 10), legend=False, yerr=ci_df, capsize=5)
+plt.tight_layout()
+plt.show()
+
+mini_results_df = results_df.loc[['Cerner Estimate', 'XGBoost'], ['MAE', 'MAPE']]
+mini_ci_df = ci_df.loc[['Cerner Estimate', 'XGBoost']]
+
+mini_results_df.plot(kind='bar', subplots=True, layout=(2, 1), figsize=(4, 8), legend=False, yerr=ci_df, capsize=5)
 plt.tight_layout()
 plt.show()
 ```
@@ -712,17 +730,18 @@ for ax, (model_name, errors) in zip(axes, actual_errors.items()):
     #ax.set_xlim(-100, 100)
     ax.set_xlabel('Actual Error (Clipped)')
     ax.set_ylabel('Proportion of Predictions')
-    ax.set_title(f'Distribution of Actual Errors (Clipped): {model_name}')
+    ax.set_title(f'Dist. of Actual Errors (Clipped): {model_name}')
 
 plt.tight_layout()
 plt.show()
 ```
 
+
 The best / most consistent modelling process identified in the previous section is then selected (model name needs to be manually selected) and the selected model/hyperparameters are used on the full dataset to produce the final model.
 
 ```{python}
 # Set to true if wanted to produce new version of model, and depending on results of comparison you may want to change training process
-retrain = False
+retrain = True
 
 if retrain == True:
     # Get the model and its parameter grid
@@ -773,4 +792,51 @@ if retrain == True:
     model_file_name = f'{date.today()}_{random_word}.joblib'
     joblib.dump(final_best_model, model_file_name)
     print(f"Model saved as: {model_file_name}")
+```
+
+### SHAP
+```{python}
+#| label: shap
+#| fig-cap: "SHAP"
+if retrain == True:
+    import shap
+    # Extract the model and preprocessor from the pipeline
+    final_model_only = final_best_model.named_steps['model']
+    preprocessor_only = final_best_model.named_steps['preprocessor']
+
+    # Preprocess the full dataset
+    X_preprocessed = preprocessor_only.transform(X)
+
+    # Get feature names from preprocessor
+    feature_names = preprocessor_only.get_feature_names_out()
+
+    # Convert to DataFrame with feature names
+    X_preprocessed_df = pd.DataFrame(X_preprocessed, columns=feature_names)
+
+    # Rename columns
+    rename_mapping = {
+        f'cat_high__{i}': col_name
+        for i, col_name in enumerate(categorical_high_cardinality)
+    }
+    for col in X_preprocessed_df.columns:
+        if col not in rename_mapping:  # Skip if already mapped
+            # Remove prefix and underscores
+            if '__' in col:
+                prefix, feature_name = col.split('__', 1)
+                rename_mapping[col] = feature_name
+    X_preprocessed_df = X_preprocessed_df.rename(columns=rename_mapping)
+
+    # Create SHAP explainer
+    explainer = shap.TreeExplainer(final_model_only)
+    shap_values = explainer.shap_values(X_preprocessed_df)
+
+    # Create summary plot with feature names
+    #shap.summary_plot(shap_values, X_preprocessed_df, plot_type="bar")
+    #plt.tight_layout()
+    #plt.show()
+
+    # Optional: Create a more detailed summary plot
+    shap.summary_plot(shap_values, X_preprocessed_df)
+    plt.tight_layout()
+    plt.show()
 ```
