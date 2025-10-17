@@ -159,7 +159,7 @@ binary_features = ['Injection']
 
 ### Binary features
 
-No binary features in this dataset.
+Shows the average value of binary features in the dataset.
 ```{python}
 #| label: fig-binary
 #| fig-cap: "Average values of binary figures"
@@ -559,6 +559,10 @@ for model_name, metrics in outer_results.items():
     print(f"\nModel: {model_name}")
     for metric_name, metric_values in metrics.items():
         print(f"{metric_name}: {metric_values['mean']:.4f} ± {metric_values['std']:.4f}")
+
+print("\nBaseline Metrics:")
+for metric_name, metric_value in baseline_metrics.items():
+    print(f"{metric_name}: {metric_value:.4f}")
 
 # Convert results to DataFrame for plotting
 results_df = pd.DataFrame({
