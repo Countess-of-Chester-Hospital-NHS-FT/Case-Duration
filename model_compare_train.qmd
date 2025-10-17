@@ -53,6 +53,8 @@ import random
 ```
 
 ## Training Notes
+Capped numerical variables at 99th percentile.
+
 
 ```{python}
 #| echo: false
@@ -258,9 +260,13 @@ These steps specify the handling of missing variables, encoding of categorical v
 
 ```{python}
 #| code-fold: false
+def cap_at_99th_percentile(X):
+    return np.apply_along_axis(lambda x: np.clip(x, None, np.percentile(x, 99)), axis=0, arr=X)
+
 numeric_transformer = Pipeline(
     steps=[
         ('imputer', SimpleImputer(strategy='mean')),
+        ('cap', FunctionTransformer(cap_at_99th_percentile, feature_names_out='one-to-one')),
         ('scaler', StandardScaler())
     ]
 )
