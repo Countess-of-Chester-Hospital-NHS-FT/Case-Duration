@@ -53,7 +53,6 @@ import random
 ```
 
 ## Training Notes
-This version of the model (09/10/2025) changed Consultant to a OneHot Encoded variable. This is because consultants may do a different case mix, so their mean Case Duration is potentially not meaningful for comparison. I also reduced the smoothing in the Target Encoding of procedure this is because if a procedure only appears once in the training data which happens often I would like the target encoded value to be closer to that value than the global mean.
 
 ```{python}
 #| echo: false
