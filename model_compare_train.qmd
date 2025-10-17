@@ -33,7 +33,7 @@ execute:
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, RandomizedSearchCV, KFold
-from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer, RobustScaler
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -53,7 +53,7 @@ import random
 ```
 
 ## Training Notes
-Capped numerical variables at 95th percentile.
+Dropped DaysAgo and Blood pressure/HR
 
 
 ```{python}
@@ -153,9 +153,10 @@ plt.show()
 #| code-fold: false
 # split features into categories for plotting and pipeline
 categorical_low_cardinality = ['PatientClassification', 'GatekeeperOutcome', 'PatientSex', 'Consultant']
-categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory'] # split high card into 2 categories - to treat differently in target encoding
-numerical_features = ['PatientAge', 'PatientBMI', 'SystolicBloodPressure', 'DiastolicBloodPressure', 'HeartRateMonitored', 'DaysAgo']
-binary_features = ['Injection']
+categorical_high_cardinality = ['WaitListOpName', 'OPCSCategory'] 
+numerical_features = ['PatientAge', 'PatientBMI', 'HeartRateMonitored'] 
+#'DaysAgo' 'DiastolicBloodPressure' 'SystolicBloodPressure' 
+binary_features = ['Injection','Amputation', 'Replacement','Repair','Toe','Hip','Knee']
 ```
 
 ### Binary features
@@ -260,13 +261,11 @@ These steps specify the handling of missing variables, encoding of categorical v
 
 ```{python}
 #| code-fold: false
-def cap_at_95th_percentile(X):
-    return np.apply_along_axis(lambda x: np.clip(x, None, np.percentile(x, 95)), axis=0, arr=X)
+
 
 numeric_transformer = Pipeline(
     steps=[
         ('imputer', SimpleImputer(strategy='mean')),
-        ('cap', FunctionTransformer(cap_at_95th_percentile, feature_names_out='one-to-one')),
         ('scaler', StandardScaler())
     ]
 )
@@ -312,7 +311,7 @@ This is what the data looks like after its been passed through the pipeline. The
 #| tbl-cap: "Post pipeline table of training data for inspection"
 # define target and features
 y = data['CaseDuration']
-X = data[categorical_low_cardinality + categorical_high_cardinality + binary_features + numerical_features]
+X = data[numerical_features + categorical_low_cardinality + categorical_high_cardinality + binary_features]
 
 # split data into train and test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
