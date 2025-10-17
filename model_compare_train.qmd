@@ -53,7 +53,6 @@ import random
 ```
 
 ## Training Notes
-This version of the model (09/10/2025) changed Consultant to a OneHot Encoded variable. This is because consultants may do a different case mix, so their mean Case Duration is potentially not meaningful for comparison. I also reduced the smoothing in the Target Encoding of procedure this is because if a procedure only appears once in the training data which happens often I would like the target encoded value to be closer to that value than the global mean.
 
 ```{python}
 #| echo: false
@@ -159,7 +158,7 @@ binary_features = ['Injection']
 
 ### Binary features
 
-No binary features in this dataset.
+Shows the average value of binary features in the dataset.
 ```{python}
 #| label: fig-binary
 #| fig-cap: "Average values of binary figures"
@@ -463,6 +462,9 @@ outer_cv = KFold(n_splits=5, shuffle=True, random_state=42)
 # Initialize dictionary to store results
 outer_results = {}
 
+# Initialize dictionary to store absolute errors for visualization
+actual_errors = {}
+
 # Initialize dictionary to store percentage errors for visualization
 percentage_errors = {}
 
@@ -472,6 +474,12 @@ epsilon = 1e-10
 percentage_error = (baseline_data['CernerEstimate'] - baseline_data['CaseDuration'].values) / (baseline_data['CaseDuration'].values + epsilon)
 fold_percentage_errors.extend(percentage_error)
 percentage_errors['CernerEstimate'] = np.array(fold_percentage_errors)
+
+# Absolute errors for baseline
+fold_actual_errors = []
+actual_error = baseline_data['CernerEstimate'] - baseline_data['CaseDuration'].values
+fold_actual_errors.extend(actual_error)
+actual_errors['CernerEstimate'] = np.array(fold_actual_errors)
 ```
 
 ```{python}
@@ -485,6 +493,7 @@ for model_name, model in models.items():
     pct_overage_scores = []
     pct_underage_scores = []
     fold_percentage_errors = []
+    fold_actual_errors = []
 
     # Outer loop: model evaluation
     for train_index, test_index in outer_cv.split(X, y):
@@ -525,7 +534,9 @@ for model_name, model in models.items():
         # Calculate percentage errors for visualization
         epsilon = 1e-10
         percentage_error = (y_pred_outer - y_test_outer.values) / (y_test_outer.values + epsilon)
+        actual_error = y_pred_outer - y_test_outer.values
         fold_percentage_errors.extend(percentage_error)
+        fold_actual_errors.extend(actual_error)
 
         # Compute evaluation metrics
         mae = mean_absolute_error(y_test_outer, y_pred_outer)
@@ -552,6 +563,7 @@ for model_name, model in models.items():
 
     # Store percentage errors for visualization
     percentage_errors[model_name] = np.array(fold_percentage_errors)
+    actual_errors[model_name] = np.array(fold_actual_errors)
 
 # Display results
 print("\nCross-Validation Results:")
@@ -559,6 +571,10 @@ for model_name, metrics in outer_results.items():
     print(f"\nModel: {model_name}")
     for metric_name, metric_values in metrics.items():
         print(f"{metric_name}: {metric_values['mean']:.4f} ± {metric_values['std']:.4f}")
+
+print("\nBaseline Metrics:")
+for metric_name, metric_value in baseline_metrics.items():
+    print(f"{metric_name}: {metric_value:.4f}")
 
 # Convert results to DataFrame for plotting
 results_df = pd.DataFrame({
@@ -639,6 +655,64 @@ for ax, (model_name, errors) in zip(axes, percentage_errors.items()):
     ax.set_xlabel('Percentage Error (%)')
     ax.set_ylabel('Proportion of Predictions')
     ax.set_title(f'Distribution of Errors: {model_name}')
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-actual-error-distribution-unclipped
+#| fig-cap: "Comparison of error distributions between the models (unclipped)"
+
+fig, axes = plt.subplots(2, 3, figsize=(14, 10))
+axes = axes.flatten()
+
+for ax, (model_name, errors) in zip(axes, actual_errors.items()):
+    # Convert to percentage
+    #percentage_error_percent = errors * 100
+    # Clip percentage errors to range -100% to +100%
+    #percentage_error_percent = np.clip(percentage_error_percent, -100, 100)
+    # Plot histogram
+    ax.hist(
+        errors,
+        bins=50,
+        #range=(-100, 100),
+        weights=np.ones_like(errors) / len(errors),
+        edgecolor='black'
+    )
+    #ax.set_xlim(-100, 100)
+    ax.set_xlabel('Actual Error')
+    ax.set_ylabel('Proportion of Predictions')
+    ax.set_title(f'Distribution of Actual Errors: {model_name}')
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-actual-error-distribution-clipped
+#| fig-cap: "Comparison of error distributions between the models (unclipped)"
+
+fig, axes = plt.subplots(2, 3, figsize=(14, 10))
+axes = axes.flatten()
+
+for ax, (model_name, errors) in zip(axes, actual_errors.items()):
+    # Convert to percentage
+    #percentage_error_percent = errors * 100
+    # Clip percentage errors to range -100% to +100%
+    errors = np.clip(errors, -100, 100)
+    # Plot histogram
+    ax.hist(
+        errors,
+        bins=50,
+        #range=(-100, 100),
+        weights=np.ones_like(errors) / len(errors),
+        edgecolor='black'
+    )
+    #ax.set_xlim(-100, 100)
+    ax.set_xlabel('Actual Error (Clipped)')
+    ax.set_ylabel('Proportion of Predictions')
+    ax.set_title(f'Distribution of Actual Errors (Clipped): {model_name}')
 
 plt.tight_layout()
 plt.show()
