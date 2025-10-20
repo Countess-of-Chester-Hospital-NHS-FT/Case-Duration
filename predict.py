@@ -9,11 +9,17 @@ model_version = "2025-10-17_kinkajou.joblib"
 base_path = r"S:\Finance & Performance\IM&T\BIReporting\Data science projects\Case Duration - Theatre case duration prediction\models"
 model_path = os.path.join(base_path, model_version)
 
-# import data needing predictions (unbooked waitlist patients)
+# import data needing predictions (unbooked waitlist patients) and create a backup of the predictions table
 dsn = "coch_p2" 
 read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
 sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_predict"
 new_data = pd.read_sql_query(sql_query, read_connection)
+
+backup_query = "select * from InformationSandpitDB.datascience.CaseDuration_predictions"
+backup_data = pd.read_sql_query(backup_query, read_connection)
+backup_path = r"S:\Finance & Performance\IM&T\BIReporting\Data science projects\Case Duration - Theatre case duration prediction\predictions_backup\CaseDuration_predictions.pkl"
+backup_data.to_pickle(backup_path)
+
 read_connection.close()
 
 # load trained model and pipeline
