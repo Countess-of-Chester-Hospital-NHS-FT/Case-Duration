@@ -3,5 +3,5 @@
 pip-tools
 ipykernel
 nbstripout
-quarto
+quarto==0.1.0
 english-words

@@ -1,0 +1,12 @@
+name: case-duration
+
+channels:
+  - conda-forge
+  - nodefaults #keyword to stop it mixing channels
+
+dependencies:
+    # conda dependencies first - then pip dependencies
+  - python=3.13.5
+  - pip
+  - pip:
+    - -r requirements-dev.txt
