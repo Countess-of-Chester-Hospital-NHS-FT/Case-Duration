@@ -1,8 +1,8 @@
 import pandas as pd
 import joblib
-import pyodbc
 import os
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 # change this manually when you want to update the model
 model_version = "2025-10-17_kinkajou.joblib"
@@ -14,17 +14,22 @@ if not folder_path:
 model_path = os.path.join(folder_path, "Case Duration - Theatre case duration prediction","models", model_version)
 
 # import data needing predictions (unbooked waitlist patients) and create a backup of the predictions table
-dsn = "coch_p2" 
-read_connection = pyodbc.connect(f'DSN={dsn}', autocommit=True)
+dsn = "coch_p2"
+connection_url_cerner = URL.create(
+    "mssql+pyodbc",
+    query={"odbc_connect": f"DSN={dsn};Database=CernerStaging"}
+)
+engine_cerner = create_engine(connection_url_cerner)
+
 sql_query = "select * from InformationSandpitDB.datascience.CaseDuration_predict"
-new_data = pd.read_sql_query(sql_query, read_connection)
+new_data = pd.read_sql_query(sql_query, engine_cerner)
 
 backup_query = "select * from InformationSandpitDB.datascience.CaseDuration_predictions"
-backup_data = pd.read_sql_query(backup_query, read_connection)
+backup_data = pd.read_sql_query(backup_query, engine_cerner)
 backup_path = os.path.join(folder_path, "Case Duration - Theatre case duration prediction","predictions_backup", "CaseDuration_predictions.pkl")
 backup_data.to_pickle(backup_path)
 
-read_connection.close()
+engine_cerner.dispose()
 
 # load trained model and pipeline
 loaded_pipeline = joblib.load(model_path)
