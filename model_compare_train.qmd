@@ -53,7 +53,6 @@ import random
 ```
 
 ## Training Notes
-Dropped DaysAgo and Blood pressure/HR
 
 
 ```{python}
@@ -139,6 +138,18 @@ feature_summary
 ### Missing data
 
 @fig-eda-missing graphically shows which features contain more missing data and where missingness correlates across features. As expected all the fields which come from the gatekeeper or pre op assessments are highly correlated for missingness, as if no assessment has happened none of the fields are populated.
+
+```{python}
+#| label: tbl-missing
+#| tbl-cap: "Summary of missing data"
+
+missing_glimpse = pd.DataFrame({
+    'missing_count': data.isnull().sum(),
+    'missing_pct': (data.isnull().sum() / len(data)) * 100
+}).sort_values('missing_pct', ascending=False)
+
+missing_glimpse
+```
 
 ```{python}
 #| label: fig-eda-missing
