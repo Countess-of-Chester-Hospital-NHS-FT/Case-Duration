@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 # change this manually when you want to update the model
-model_version = "2025-10-17_kinkajou.joblib"
+model_version = "2026-01-27_solan.joblib"
 
 folder_path = os.environ.get('DS_FOLDER_PATH')
 if not folder_path:
