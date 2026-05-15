@@ -11,7 +11,7 @@ folder_path = os.environ.get('DS_FOLDER_PATH')
 if not folder_path:
     raise ValueError("DS_FOLDER_PATH environment variable not set!")
 
-model_path = os.path.join(folder_path, "Case Duration - Theatre case duration prediction","models", model_version)
+model_path = os.path.join(folder_path, "DO_16609 - Case Duration - Theatre case duration prediction","models", model_version)
 
 # import data needing predictions (unbooked waitlist patients) and create a backup of the predictions table
 dsn = "coch_p2"
@@ -26,7 +26,7 @@ new_data = pd.read_sql_query(sql_query, engine_cerner)
 
 backup_query = "select * from InformationSandpitDB.datascience.CaseDuration_predictions"
 backup_data = pd.read_sql_query(backup_query, engine_cerner)
-backup_path = os.path.join(folder_path, "Case Duration - Theatre case duration prediction","predictions_backup", "CaseDuration_predictions.pkl")
+backup_path = os.path.join(folder_path, "DO_16609 - Case Duration - Theatre case duration prediction","predictions_backup", "CaseDuration_predictions.pkl")
 backup_data.to_pickle(backup_path)
 
 engine_cerner.dispose()
